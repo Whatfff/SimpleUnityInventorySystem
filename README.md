@@ -1,4 +1,5 @@
 # Unity高级背包系统完整指南
+*注:这一份文档删减了部分详细代码示例，并改为流程图，若需要详细代码示例，可以参考[InventorySystem-v1](https://github.com/Whatfff/SimpleUnityInventorySystem/edit/main/README.md)
 
 ## 目录
 1. [系统架构概述](#1-系统架构概述)
