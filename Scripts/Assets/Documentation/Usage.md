@@ -14,124 +14,162 @@
 - Unity 2020.3 或更高版本
 - .NET 4.x
 - TextMesh Pro (UI显示)
+- 推荐分辨率: 1920x1080
 
 ### 1.2 安装步骤
 
-#### 1.2.1 导入资源
-1. 将以下文件夹导入到你的Unity项目中:
-   ```
-   Assets/
-   ├── Scripts/
-   │   ├── Core/           # 核心系统脚本
-   │   ├── UI/            # UI相关脚本
-   │   ├── Editor/        # 编辑器工具脚本
-   │   └── Utils/         # 工具类脚本
-   ├── Prefabs/           # UI预制体
-   ├── Resources/         # 资源文件
-   └── Documentation/     # 文档
-   ```
+#### 1.2.1 导入资源包
+1. 将资源包导入项目:
+   - 在Unity编辑器中选择 Assets > Import Package > Custom Package
+   - 选择 RPGInventorySystem.unitypackage
+   - 确保所有文件都被选中并点击 Import
 
-2. 确保所有依赖包都已安装:
-   - TextMesh Pro
-   - Unity UI
-   - JSON .NET (可选,用于高级序列化)
+2. 检查文件结构:
+```
+Assets/
+├── RPGInventory/
+    ├── Scripts/
+    │   ├── Core/           
+    │   │   ├── Item.cs             # 物品基类
+    │   │   ├── ItemSlot.cs         # 物品槽类
+    │   │   ├── Inventory.cs        # 物品栏系统
+    │   │   └── ItemDatabase.cs     # 物品数据库
+    │   ├── UI/            
+    │   │   ├── UIItemSlot.cs       # 物品槽UI
+    │   │   ├── UIInventory.cs      # 物品栏UI
+    │   │   ├── ItemTooltip.cs      # 提示框
+    │   │   └── UIItemContextMenu.cs # 上下文菜单
+    │   └── Editor/        
+    │       └── ItemDatabaseEditor.cs # 数据库编辑器
+    ├── Prefabs/           
+    │   ├── UI/
+    │   │   ├── InventorySlot.prefab # 物品槽预制体
+    │   │   ├── InventoryPanel.prefab # 物品栏面板
+    │   │   ├── Tooltip.prefab       # 提示框预制体
+    │   │   └── ContextMenu.prefab   # 上下文菜单预制体
+    └── Resources/         
+        └── DefaultItems/   # 默认物品数据
+```
 
 #### 1.2.2 场景设置
-1. 创建一个新场景或打开现有场景
-2. 创建必要的游戏对象:
-```
-Scene
-├── GameManager           # 游戏管理器
-├── InventorySystem       # 物品系统
-└── UI
-    ├── Canvas           # UI画布
-    │   ├── Inventory    # 物品栏
-    │   ├── Equipment    # 装备栏
-    │   ├── Tooltip     # 提示框
-    │   └── ContextMenu # 上下文菜单
-    └── EventSystem      # UI事件系统
-```
+1. **创建基础游戏对象**
+   ```
+   Hierarchy:
+   ├── GameManager                    # 添加 GameManager.cs
+   ├── InventorySystem               # 添加 Inventory.cs
+   ├── ItemDatabase                 # 添加 ItemDatabase.cs
+   └── UI
+       ├── Canvas (UI)              # 设置为Screen Space - Overlay
+       │   ├── InventoryPanel       # 添加 UIInventory.cs
+       │   │   ├── GridLayout      # 配置网格布局
+       │   │   └── Slots          # 物品槽容器
+       │   ├── TooltipPanel        # 添加 ItemTooltip.cs
+       │   └── ContextMenuPanel    # 添加 UIItemContextMenu.cs
+       └── EventSystem             # 确保存在
+   ```
 
-#### 1.2.3 组件配置
-1. **GameManager配置**
-```csharp
-// GameManager.cs
-public class GameManager : MonoBehaviour
-{
-    [Header("Systems")]
-    public Inventory inventory;          // 物品栏系统
-    public UIInventory uiInventory;      // 物品栏UI
-    public ItemDatabase itemDatabase;    // 物品数据库
-    
-    [Header("Settings")]
-    public int inventorySize = 20;       // 物品栏大小
-    public bool enableAutosave = true;   // 启用自动保存
-    public float autosaveInterval = 300f; // 自动保存间隔
-    
-    private void Start()
-    {
-        InitializeSystems();
-        LoadSavedData();
-        SetupEventHandlers();
-    }
-    
-    private void InitializeSystems()
-    {
-        // 初始化物品数据库
-        itemDatabase.Initialize();
-        
-        // 初始化物品栏
-        inventory.Initialize(inventorySize);
-        
-        // 初始化UI
-        uiInventory.Initialize(inventory);
-        
-        if (enableAutosave)
-        {
-            InvokeRepeating("AutoSave", autosaveInterval, autosaveInterval);
-        }
-    }
-    
-    private void LoadSavedData()
-    {
-        // 加载存档数据
-        if (inventory.LoadInventory(itemDatabase))
-        {
-            Debug.Log("Successfully loaded inventory data");
-        }
-    }
-    
-    private void SetupEventHandlers()
-    {
-        // 注册事件处理
-        inventory.OnItemAdded += HandleItemAdded;
-        inventory.OnItemRemoved += HandleItemRemoved;
-        inventory.OnItemUsed += HandleItemUsed;
-    }
-}
-```
+2. **预制体设置**
+   - 将 InventorySlot 预制体拖拽到 Slots 下作为示例
+   - 确保所有UI元素都在Canvas内部
 
-2. **Inventory组件配置**
-```csharp
-// 在Inspector中设置
-- Inventory Size: 20
-- UI References:
-  - Slot Prefab
-  - UI Inventory
-  - Item Tooltip
-  - Context Menu
-```
+### 1.3 组件配置详解
 
-3. **Canvas配置**
-- Render Mode: Screen Space - Overlay
-- UI Scale Mode: Scale With Screen Size
-- Reference Resolution: 1920 x 1080
-- Screen Match Mode: Match Width Or Height
-- Match: 0.5
+#### 1.3.1 GameManager配置
+1. 在GameManager游戏对象上:
+   - 添加 GameManager.cs 脚本
+   - 设置引用:
+     ```
+     Inventory: 拖拽 InventorySystem 对象
+     UI Inventory: 拖拽 InventoryPanel 对象
+     Item Database: 拖拽 ItemDatabase 对象
+     ```
+   - 配置参数:
+     ```
+     Inventory Size: 20
+     Enable Autosave: √
+     Autosave Interval: 300
+     ```
 
-### 1.3 基本UI设置
+#### 1.3.2 InventorySystem配置
+1. 在InventorySystem游戏对象上:
+   - 添加 Inventory.cs 脚本
+   - 设置参数:
+     ```
+     Inventory Size: 20
+     Slots: 自动生成
+     ```
 
-#### 1.3.1 物品栏UI
+#### 1.3.3 ItemDatabase配置
+1. 在ItemDatabase游戏对象上:
+   - 添加 ItemDatabase.cs 脚本
+   - 创建物品数据:
+     - 在Project窗口中右键
+     - Create > RPGInventory > Item Database
+     - 将创建的数据库文件拖拽到组件的Database字段
+
+#### 1.3.4 UI配置
+
+1. **Canvas设置**
+   - Render Mode: Screen Space - Overlay
+   - UI Scale Mode: Scale With Screen Size
+   - Reference Resolution: 1920 x 1080
+   - Screen Match Mode: Match Width Or Height
+   - Match: 0.5
+   - Reference Pixels Per Unit: 100
+   - Sort Order: 0
+
+2. **InventoryPanel配置**
+   - 添加 UIInventory.cs 脚本
+   - 设置引用:
+     ```
+     Slot Prefab: 拖拽 InventorySlot.prefab
+     Slots Parent: 拖拽 Slots 对象
+     Inventory: 拖拽 InventorySystem 对象
+     ```
+   - 添加Grid Layout Group组件:
+     ```
+     Cell Size: 80 x 80
+     Spacing: 5 x 5
+     Start Corner: Upper Left
+     Start Axis: Horizontal
+     Child Alignment: Upper Left
+     Constraint: Fixed Column Count
+     Constraint Count: 5
+     ```
+
+3. **InventorySlot预制体配置**
+   - 结构:
+     ```
+     InventorySlot (Prefab)
+     ├── Background (Image)
+     ├── ItemIcon (Image)
+     ├── AmountText (TextMeshProUGUI)
+     └── Highlight (Image)
+     ```
+   - 添加组件:
+     - UIItemSlot.cs
+     - Button (UI)
+     - EventTrigger
+
+4. **Tooltip配置**
+   - 添加 ItemTooltip.cs 脚本
+   - 设置引用:
+     ```
+     Item Name Text: 拖拽对应的TextMeshProUGUI组件
+     Item Type Text: 拖拽对应的TextMeshProUGUI组件
+     Rarity Text: 拖拽对应的TextMeshProUGUI组件
+     Description Text: 拖拽对应的TextMeshProUGUI组件
+     Stats Text: 拖拽对应的TextMeshProUGUI组件
+     Background: 拖拽背景Image组件
+     ```
+
+5. **ContextMenu配置**
+   - 添加 UIItemContextMenu.cs 脚本
+   - 设置按钮引用和事件处理
+
+### 1.4 基本UI设置
+
+#### 1.4.1 物品栏UI
 1. **创建物品格子预制体**
 ```
 ItemSlot (Prefab)
@@ -156,7 +194,7 @@ ItemSlot (Prefab)
   - Columns: 5
 ```
 
-#### 1.3.2 提示框设置
+#### 1.4.2 提示框设置
 ```csharp
 // ItemTooltip.cs配置
 [SerializeField] private float offsetX = 20f;
@@ -166,9 +204,9 @@ ItemSlot (Prefab)
 [SerializeField] private float maxWidth = 400f;
 ```
 
-### 1.4 基本功能测试
+### 1.5 基本功能测试
 
-#### 1.4.1 添加测试物品
+#### 1.5.1 添加测试物品
 ```csharp
 void TestInventorySystem()
 {
@@ -188,7 +226,7 @@ void TestInventorySystem()
 }
 ```
 
-#### 1.4.2 测试UI交互
+#### 1.5.2 测试UI交互
 ```csharp
 void TestUIInteraction()
 {
@@ -203,16 +241,16 @@ void TestUIInteraction()
 }
 ```
 
-### 1.5 常见初始化问题
+### 1.6 常见初始化问题
 
-#### 1.5.1 检查清单
+#### 1.6.1 检查清单
 - [ ] 所有必要的脚本组件都已添加
 - [ ] UI预制体引用正确设置
 - [ ] 事件系统正确配置
 - [ ] 物品数据库已正确加载
 - [ ] 存档路径权限正确
 
-#### 1.5.2 调试提示
+#### 1.6.2 调试提示
 ```csharp
 // 开启详细日志
 public static class InventoryDebug
@@ -229,7 +267,7 @@ public static class InventoryDebug
 }
 ```
 
-### 1.6 下一步
+### 1.7 下一步
 - 配置物品数据库
 - 设置自定义物品类型
 - 实现物品行为
