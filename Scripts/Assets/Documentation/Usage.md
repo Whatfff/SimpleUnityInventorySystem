@@ -102,10 +102,59 @@ Assets/
 #### 1.3.3 ItemDatabase配置
 1. 在ItemDatabase游戏对象上:
    - 添加 ItemDatabase.cs 脚本
-   - 创建物品数据:
-     - 在Project窗口中右键
-     - Create > RPGInventory > Item Database
-     - 将创建的数据库文件拖拽到组件的Database字段
+   - 创建数据库文件:
+     ```
+     1. 在Assets/Resources/DefaultItems/目录下创建items_database.json
+     2. 编写物品数据（参考下方示例）
+     3. 将json文件拖拽到ItemDatabase组件的Database File字段
+     ```
+
+2. JSON数据格式说明:
+   ```json
+   {
+       "items": [
+           {
+               "id": 1,              // 物品唯一ID
+               "itemName": "物品名称",
+               "description": "物品描述",
+               "maxStackSize": 1,    // 最大堆叠数量
+               "baseValue": 100,     // 基础价值
+               "iconPath": "图标路径",  // 相对于Resources/Icons的路径
+               "prefabPath": "预制体路径", // 相对于Resources/Prefabs的路径
+               "type": 1,           // 物品类型(1:武器,2:护甲,3:消耗品,4:材料,5:任务物品)
+               "rarity": 0,         // 稀有度(0:普通,1:优秀,2:稀有,3:史诗,4:传说)
+               "level": 1           // 物品等级
+           }
+       ]
+   }
+   ```
+
+3. 资源目录结构:
+   ```
+   Assets/
+   └── Resources/
+       ├── Icons/
+       │   ├── weapons/
+       │   │   └── iron_sword.png
+       │   ├── armors/
+       │   │   └── leather_armor.png
+       │   └── consumables/
+       │       └── health_potion.png
+       ├── Prefabs/
+       │   ├── weapons/
+       │   │   └── iron_sword_prefab.prefab
+       │   ├── armors/
+       │   │   └── leather_armor_prefab.prefab
+       │   └── consumables/
+       │       └── health_potion_prefab.prefab
+       └── DefaultItems/
+           └── items_database.json
+   ```
+
+4. 运行时验证:
+   - 在控制台中查看是否有"Item database initialized"消息
+   - 检查是否显示正确的物品数量加载信息
+   - 使用GameManager的AddTestItems()方法测试物品加载
 
 #### 1.3.4 UI配置
 
