@@ -1,4 +1,4 @@
-# Unity高级背包系统完整指南
+# RPG物品系统设计文档
 
 ## 目录
 1. [系统架构概述](#1-系统架构概述)
@@ -16,1450 +16,2208 @@
 13. [系统集成示例](#13-系统集成示例)
 14. [调试与错误处理](#14-调试与错误处理)
 15. [扩展功能示例](#15-扩展功能示例)
+16. [性能优化指南](#16-性能优化指南)
+17. [网络同步系统](#17-网络同步系统)
+18. [安全性系统](#18-安全性系统)
 
 ## 1. 系统架构概述
 
-### 1.1 系统结构图
-本系统采用模块化设计，主要包含以下组件：
-- 基础物品管理（物品属性、类型、稀有度）
-- 高级特性（强化、耐久度、附魔、套装）
-- UI系统（物品槽、拖拽系统、提示框）
-
+### 1.1 系统整体架构
 ```mermaid
-classDiagram
-    Item <|-- Equipment
-    Item <|-- Consumable
-    Item <|-- Material
+graph TD
+    A[物品系统核心] --> B[物品管理器]
+    A --> C[UI管理器]
+    A --> D[数据管理器]
+    A --> E[事件系统]
     
-    class Item {
-        +int id
-        +string name
-        +ItemType type
-        +ItemRarity rarity
-        +Use()
-    }
+    B --> B1[物品工厂]
+    B --> B2[物品池]
+    B --> B3[物品缓存]
     
-    class Equipment {
-        +EquipmentStats stats
-        +int durability
-        +List~Enchantment~ enchantments
-        +string setName
-    }
+    C --> C1[物品栏UI]
+    C --> C2[装备UI]
+    C --> C3[商店UI]
     
-    class Inventory {
-        +ItemSlot[] slots
-        +AddItem()
-        +RemoveItem()
-        +UseItem()
-    }
+    D --> D1[存档系统]
+    D --> D2[数据验证]
+    D --> D3[配置管理]
     
-    class UIInventory {
-        +Initialize()
-        +UpdateUI()
-        +HandleDrag()
-    }
+    E --> E1[物品事件]
+    E --> E2[UI事件]
+    E --> E3[系统事件]
 ```
 
-### 1.2 系统特点
-- **模块化设计**：每个子系统都是独立的，可以根据需求选择性使用
-- **高扩展性**：预留了充足的扩展接口，方便添加新功能
-- **完整文档**：提供详细的API文档和使用示例
-- **易于使用**：提供直观的接口和完整的事件系统
+### 1.2 核心模块说明
+
+#### 1.2.1 物品管理器
+- 物品的创建、销毁和回收
+- 物品数据的管理和缓存
+- 物品池的维护
+- 物品状态的同步
+
+#### 1.2.2 UI管理器
+- 物品栏界面管理
+- 装备界面管理
+- 商店界面管理
+- UI事件处理
+- 用户交互响应
+
+#### 1.2.3 数据管理器
+- 物品数据的序列化和反序列化
+- 存档系统的管理
+- 配置数据的加载和管理
+- 数据完整性验证
+
+#### 1.2.4 事件系统
+- 物品相关事件的分发
+- UI事件的处理
+- 系统状态的同步
+- 跨模块通信
 
 ## 2. 基础物品系统
 
-### 2.1 物品基类实现
-物品基类(Item)是整个系统的核心，定义了物品的基本属性和行为：
+### 2.1 物品分类系统
+物品系统采用三层分类结构:
+1. 物品类别 (ItemCategory)
+2. 装备类型 (EquipmentType)
+3. 具体类型 (ItemType)
 
 ```mermaid
-classDiagram
-    class Item {
-        +int id
-        +string itemName
-        +string description
-        +Sprite icon
-        +float price
-        +int level
-        +ItemType type
-        +ItemRarity rarity
-        +Use()
-        +GetRarityColor()
-    }
+graph TD
+    A[物品类别] --> B[装备]
+    A --> C[消耗品]
+    A --> D[材料]
+    A --> E[任务物品]
+    A --> F[其他]
     
-    class ItemType {
-        <<enumeration>>
-        Weapon
-        Armor
-        Consumable
-        Material
-        Quest
-        Accessory
-    }
+    B --> G[近战武器]
+    B --> H[远程武器]
+    B --> I[魔法武器]
+    B --> J[科技武器]
+    B --> K[防具]
+    B --> L[饰品]
     
-    class ItemRarity {
-        <<enumeration>>
-        Common
-        Uncommon
-        Rare
-        Epic
-        Legendary
-    }
+    G --> M[剑]
+    G --> N[斧]
+    G --> O[匕首]
+    G --> P[长矛]
 ```
 
+### 2.2 类型定义
 ```csharp
-public class Item
+public enum ItemCategory
 {
-    // 基础属性
-    public int id;             // 物品唯一标识符
-    public string itemName;    // 物品名称
-    public string description; // 物品描述
-    public Sprite icon;        // 物品图标
-    public float price;        // 物品价格
-    public int level;          // 物品等级要求
-    public string tag;         // 物品标签（用于分类和筛选）
-    public int maxStackSize;   // 最大堆叠数量
+    Equipment,   // 装备
+    Consumable,  // 消耗品
+    Material,    // 材料
+    Quest,       // 任务物品
+    Misc        // 其他
+}
 
-    // 装备属性
-    public EquipmentStats stats = new EquipmentStats();
-    public float maxDurability;
-    public float currentDurability;
-    public bool broken;
-    public int enhanceLevel;
-    public List<Enchantment> enchantments = new List<Enchantment>();
-    public string setName;
-    public List<SetBonus> setBonuses = new List<SetBonus>();
+public enum EquipmentType
+{
+    MeleeWeapon,  // 近战武器
+    RangedWeapon, // 远程武器
+    MagicWeapon,  // 魔法武器
+    TechWeapon,   // 科技武器
+    Armor,        // 防具
+    Accessory     // 饰品
+}
 
-    // 物品类型和稀有度
-    public enum ItemType
+public enum ItemType
+{
+    // 近战武器 (100-199)
+    Sword = 100,
+    Axe = 101,
+    Dagger = 102,
+    Spear = 103,
+    
+    // 远程武器 (200-299)
+    Bow = 200,
+    Crossbow = 201,
+    
+    // 魔法武器 (300-399)
+    Staff = 300,
+    Wand = 301,
+    
+    // 以此类推...
+}
+```
+
+### 2.3 类型判断
+```csharp
+public static class ItemTypeHelper
+{
+    // 判断物品大类
+    public static bool IsEquipment(Item item)
     {
-        Weapon,     // 武器
-        Armor,      // 护甲
-        Consumable, // 消耗品
-        Material,   // 材料
-        Quest,      // 任务物品
-        Accessory   // 饰品
+        return item.Category == ItemCategory.Equipment;
     }
-
-    public enum ItemRarity
+    
+    // 判断装备类型
+    public static bool IsMeleeWeapon(Item item)
     {
-        Common,    // 普通（白色）
-        Uncommon,  // 优秀（绿色）
-        Rare,      // 稀有（蓝色）
-        Epic,      // 史诗（紫色）
-        Legendary  // 传说（金色）
+        if (!IsEquipment(item)) return false;
+        return (int)item.Type >= 100 && (int)item.Type < 200;
     }
-
-    public ItemType itemType;
-    public ItemRarity rarity;
-
-    // 构造函数
-    public Item(int id, string name, string desc, Sprite icon, ItemType type, ItemRarity rarity, int stackSize = 1)
+    
+    // 获取装备类型
+    public static EquipmentType GetEquipmentType(Item item)
     {
-        this.id = id;
-        this.itemName = name;
-        this.description = desc;
-        this.icon = icon;
-        this.itemType = type;
-        this.rarity = rarity;
-        this.maxStackSize = stackSize;
-    }
-
-    // 获取物品颜色
-    public Color GetRarityColor()
-    {
-        switch (rarity)
-        {
-            case ItemRarity.Common: return Color.white;
-            case ItemRarity.Uncommon: return Color.green;
-            case ItemRarity.Rare: return Color.blue;
-            case ItemRarity.Epic: return new Color(0.5f, 0, 0.5f);
-            case ItemRarity.Legendary: return Color.yellow;
-            default: return Color.white;
-        }
+        if (!IsEquipment(item)) return EquipmentType.None;
+        
+        int typeValue = (int)item.Type;
+        if (typeValue < 200) return EquipmentType.MeleeWeapon;
+        if (typeValue < 300) return EquipmentType.RangedWeapon;
+        if (typeValue < 400) return EquipmentType.MagicWeapon;
+        if (typeValue < 500) return EquipmentType.TechWeapon;
+        if (typeValue < 600) return EquipmentType.Armor;
+        return EquipmentType.Accessory;
     }
 }
 ```
 
-### 2.2 物品槽实现
-物品槽(ItemSlot)用于管理背包中的每个格子：
+### 2.4 分类规则
+1. **数值范围规则**
+   - 每个大类预留100个数值空间
+   - 便于后续扩展新类型
+   - 方便类型判断和转换
 
-```mermaid
-classDiagram
-    ItemSlot o-- Item
+2. **类型继承关系**
+   - Category > EquipmentType > ItemType
+   - 上层决定下层的基本属性
+   - 下层继承上层的特性
+
+3. **类型约束**
+   - 每个物品必须属于一个Category
+   - Equipment类型必须指定EquipmentType
+   - ItemType必须在对应范围内
+
+### 2.5 使用示例
+```csharp
+// 创建物品时的类型设置
+public Item CreateWeapon(ItemType type)
+{
+    // 验证类型
+    if (!IsValidWeaponType(type))
+        throw new ArgumentException("Invalid weapon type");
+        
+    // 创建物品
+    Item weapon = new Item();
+    weapon.Category = ItemCategory.Equipment;
+    weapon.Type = type;
     
-    class ItemSlot {
-        +Item item
-        +int amount
-        +IsEmpty()
-        +CanAddItem()
-    }
-```
+    // 根据类型初始化属性
+    InitializeWeaponStats(weapon);
+    
+    return weapon;
+}
 
-### 2.3 背包系统实现
-背包系统(Inventory)管理所有物品槽：
-
-```mermaid
-flowchart TD
-    A[添加物品] --> B{检查堆叠}
-    B -->|可堆叠| C[增加数量]
-    B -->|不可堆叠| D{查找空槽}
-    D -->|有空槽| E[放入新槽位]
-    D -->|无空槽| F[添加失败]
+// 类型验证
+private bool IsValidWeaponType(ItemType type)
+{
+    int typeValue = (int)type;
+    return typeValue >= 100 && typeValue < 500;
+}
 ```
 
 ## 3. 装备属性系统
 
-### 3.1 属性类型详解
-装备属性系统定义了装备的各种属性和效果：
+### 3.1 系统概述
+物品属性系统包含多个子系统：
+- 基础属性系统
+- 装备属性系统
+- 武器属性系统
+- 魔法属性系统
+- 元素属性系统
+- 套装属性系统
 
+```mermaid
+graph TD
+    A[物品属性系统] --> B[基础属性]
+    A --> C[装备属性]
+    A --> D[武器属性]
+    A --> E[魔法属性]
+    A --> F[元素属性]
+    A --> G[套装属性]
+    
+    B --> B1[名称/描述]
+    B --> B2[图标/外观]
+    B --> B3[价格/等级]
+    B --> B4[稀有度]
+    
+    C --> C1[基础属性]
+    C --> C2[战斗属性]
+    C --> C3[特殊属性]
+    
+    D --> D1[物理属性]
+    D --> D2[技术属性]
+    D --> D3[特殊效果]
+    
+    E --> E1[魔法威力]
+    E --> E2[元素掌握]
+    E --> E3[法术效果]
+```
+
+### 3.2 基础属性系统
 ```csharp
-[System.Serializable]
+public class Item
+{
+    // 标识属性
+    private int _id;                     // 唯一ID
+    private string _itemName;            // 物品名称
+    private string _description;         // 物品描述
+    private Sprite _icon;                // 物品图标
+    private string _tag;                 // 物品标签
+    
+    // 基础数值
+    private float _price;                // 价格
+    private int _level;                  // 等级
+    private int _maxStackSize;           // 最大堆叠数
+    private ItemRarity _rarity;          // 稀有度
+    
+    // 状态属性
+    private ItemState _state;            // 物品状态
+    private bool _isDestroyed;           // 是否已销毁
+    private float _currentDurability;    // 当前耐久度
+    private float _maxDurability;        // 最大耐久度
+    
+    // 分类属性
+    private ItemCategory _category;      // 物品类别
+    private ItemType _itemType;          // 物品类型
+    private ElementType _elements;       // 元素类型
+}
+```
+
+### 3.3 装备属性系统
+```csharp
 public class EquipmentStats
 {
     // 基础属性
-    public float hp;        // 生命值
-    public float mp;        // 魔法值
-    public float attack;    // 攻击力
-    public float defense;   // 防御力
-    public float speed;     // 速度
+    public float HP;                 // 生命值
+    public float MP;                 // 魔法值
+    public float Attack;             // 攻击力
+    public float Defense;            // 防御力
+    public float Speed;              // 速度
+    
+    // 战斗属性
+    public float CritRate;           // 暴击率
+    public float CritDamage;         // 暴击伤害
+    public float DodgeRate;          // 闪避率
+    public float HitRate;            // 命中率
+    public float BlockRate;          // 格挡率
+    
+    // 属性成长
+    public float Strength;           // 力量
+    public float Intelligence;       // 智力
+    public float Dexterity;          // 敏捷
+    public float Vitality;           // 体力
+    public float Luck;               // 幸运
     
     // 特殊属性
-    public float critRate;  // 暴击率
-    public float critDamage; // 暴击伤害
-    public float dodgeRate; // 闪避率
+    public float MagicResist;        // 魔法抗性
+    public float ArmorPen;           // 护甲穿透
+    public float MagicPen;           // 魔法穿透
+    public float LifeSteal;          // 生命偷取
+    public float CooldownReduction;  // 冷却缩减
     
-    // 属性合并方法
-    public EquipmentStats Add(EquipmentStats other)
+    // 计算最终属性
+    public float CalculateFinalAttack()
     {
-        EquipmentStats result = new EquipmentStats();
-        result.hp = this.hp + other.hp;
-        result.mp = this.mp + other.mp;
-        result.attack = this.attack + other.attack;
-        result.defense = this.defense + other.defense;
-        result.speed = this.speed + other.speed;
-        result.critRate = this.critRate + other.critRate;
-        result.critDamage = this.critDamage + other.critDamage;
-        result.dodgeRate = this.dodgeRate + other.dodgeRate;
-        return result;
+        float baseAttack = Attack;
+        float strBonus = Strength * 1.5f;
+        float levelBonus = Owner.Level * 2f;
+        return baseAttack + strBonus + levelBonus;
     }
 }
 ```
 
-### 3.2 属性计算系统
-
-```mermaid
-flowchart LR
-    A[基础属性] --> D[属性叠加]
-    B[附加属性] --> D
-    D --> E[百分比加成]
-    E --> F[最终属性]
-```
-
-### 3.3 属性修饰器系统
-用于实现各种属性加成效果：
-
-```mermaid
-classDiagram
-    StatModifier <|-- FlatModifier
-    StatModifier <|-- PercentAddModifier
-    StatModifier <|-- PercentMultModifier
+### 3.4 武器属性系统
+```csharp
+public class WeaponStats
+{
+    // 通用属性
+    public float Accuracy;           // 精准度
+    public float ReloadSpeed;        // 装弹速度
+    public float Range;              // 射程
+    public float FireRate;           // 射速
     
-    class StatModifier {
-        +float Value
-        +StatModifierType Type
-        +int Order
+    // 热武器属性
+    public int MagazineSize;         // 弹匣容量
+    public int CurrentAmmo;          // 当前弹药
+    public string AmmoType;          // 弹药类型
+    public float Recoil;             // 后坐力
+    
+    // 能量武器属性
+    public float MaxEnergy;          // 最大能量
+    public float CurrentEnergy;      // 当前能量
+    public float EnergyPerShot;      // 每次射击消耗
+    public float HeatGeneration;     // 发热量
+    public float CoolingRate;        // 冷却速率
+    public bool IsOverheated;        // 是否过热
+    
+    // 计算伤害
+    public float CalculateDamage(float baseDamage)
+    {
+        float accuracyBonus = Accuracy * 0.01f;
+        float rangePenalty = CalculateRangePenalty();
+        return baseDamage * (1 + accuracyBonus) * rangePenalty;
     }
+}
 ```
+
+### 3.5 魔法武器属性系统
+```csharp
+public class MagicWeaponStats
+{
+    // 魔法属性
+    public float MagicPower;         // 魔法威力
+    public float SpellAmplification; // 法术增幅
+    public float ChannelSpeed;       // 引导速度
+    public float ManaEfficiency;     // 法力效率
+    
+    // 元素掌握
+    public float ElementalMastery;   // 元素掌握
+    public ElementType Elements;      // 元素类型
+    
+    // 法术效果
+    public float SpellCritRate;      // 法术暴击率
+    public float SpellCritDamage;    // 法术暴击伤害
+    public float ManaCost;           // 法力消耗
+    public float CastSpeed;          // 施法速度
+    public float SpellRange;         // 法术范围
+    
+    // 计算法术伤害
+    public float CalculateSpellDamage(float baseSpellPower)
+    {
+        float amplification = 1 + SpellAmplification * 0.01f;
+        float elementalBonus = CalculateElementalBonus();
+        return baseSpellPower * amplification * elementalBonus;
+    }
+}
+```
+
+### 3.6 元素属性系统
+```csharp
+[System.Flags]
+public enum ElementType
+{
+    None = 0,
+    Fire = 1 << 0,      // 火
+    Ice = 1 << 1,       // 冰
+    Lightning = 1 << 2, // 雷
+    Wind = 1 << 3,      // 风
+    Earth = 1 << 4,     // 土
+    Light = 1 << 5,     // 光
+    Dark = 1 << 6       // 暗
+}
+
+public class ElementalSystem
+{
+    // 元素相克关系
+    private static readonly Dictionary<ElementType, ElementType> Counters = new()
+    {
+        { ElementType.Fire, ElementType.Ice },
+        { ElementType.Ice, ElementType.Lightning },
+        { ElementType.Lightning, ElementType.Earth },
+        { ElementType.Earth, ElementType.Wind },
+        { ElementType.Wind, ElementType.Fire },
+        { ElementType.Light, ElementType.Dark },
+        { ElementType.Dark, ElementType.Light }
+    };
+    
+    // 计算元素伤害
+    public float CalculateElementalDamage(ElementType attackType, ElementType defenseType, float baseDamage)
+    {
+        float elementalBonus = 1.0f;
+        
+        if (Counters[attackType] == defenseType)
+            elementalBonus = 1.5f; // 克制加成
+        else if (Counters[defenseType] == attackType)
+            elementalBonus = 0.5f; // 被克制减益
+            
+        return baseDamage * elementalBonus;
+    }
+}
+```
+
+### 3.7 套装属性系统
+```csharp
+public class SetBonus
+{
+    public string SetName;           // 套装名称
+    public int RequiredPieces;       // 所需件数
+    public List<StatBonus> Bonuses;  // 套装加成
+    
+    // 检查套装效果是否激活
+    public bool IsActive(int equippedPieces)
+    {
+        return equippedPieces >= RequiredPieces;
+    }
+}
+
+public class StatBonus
+{
+    public StatType Type;            // 属性类型
+    public float Value;              // 加成值
+    public bool IsPercentage;        // 是否百分比
+    
+    // 计算属性加成
+    public float CalculateBonus(float baseValue)
+    {
+        return IsPercentage ? baseValue * (Value / 100) : Value;
+    }
+}
 
 ## 4. 强化系统
 
-### 4.1 强化系统核心实现
-强化系统用于提升装备的基础属性：
+### 4.1 系统概述
+物品强化系统提供了装备升级、附魔和改造的功能：
+- 基础强化（提升装备等级）
+- 附魔系统（添加特殊效果）
+- 宝石镶嵌（属性强化）
+- 改造系统（改变装备特性）
 
 ```mermaid
-stateDiagram-v2
-    [*] --> 检查条件
-    检查条件 --> 计算概率: 材料和金币足够
-    计算概率 --> 强化成功: 随机值<=成功率
-    计算概率 --> 强化失败: 随机值>成功率
-    强化失败 --> 物品破损: 随机值<=破损率
-    强化失败 --> 保持不变: 随机值>破损率
+graph TD
+    A[物品强化系统] --> B[基础强化]
+    A --> C[附魔系统]
+    A --> D[宝石镶嵌]
+    A --> E[改造系统]
+    
+    B --> B1[等级提升]
+    B --> B2[属性成长]
+    B --> B3[强化材料]
+    
+    C --> C1[附魔效果]
+    C --> C2[附魔材料]
+    C --> C3[附魔限制]
+    
+    D --> D1[宝石类型]
+    D --> D2[镶嵌槽位]
+    D --> D3[宝石组合]
+    
+    E --> E1[改造方案]
+    E --> E2[特性变更]
+    E --> E3[改造材料]
 ```
 
-### 4.2 强化UI实现
-
-```mermaid
-classDiagram
-    EnhanceUI o-- EnhanceSystem
-    EnhanceUI o-- UIItemSlot
+### 4.2 基础强化系统
+```csharp
+public class EnhanceSystem
+{
+    // 强化等级上限
+    public const int MAX_ENHANCE_LEVEL = 20;
     
-    class EnhanceUI {
-        +UpdateUI()
-        +OnEnhanceButtonClick()
-        -EnhanceCoroutine()
+    // 强化属性
+    private int _enhanceLevel;               // 强化等级
+    private float _enhanceSuccessRate;       // 成功率
+    private float _enhanceBreakRate;         // 破损率
+    private List<EnhanceMaterial> _materials;// 所需材料
+    
+    // 强化计算
+    public bool TryEnhance(Item item, List<Item> materials)
+    {
+        if (!CanEnhance(item, materials))
+            return false;
+            
+        float successRate = CalculateSuccessRate(item, materials);
+        float breakRate = CalculateBreakRate(item);
+        
+        float random = Random.value;
+        if (random < successRate)
+        {
+            ApplyEnhancement(item);
+            return true;
+        }
+        else if (random < successRate + breakRate)
+        {
+            BreakItem(item);
+        }
+        
+        ConsumeMaterials(materials);
+        return false;
     }
+    
+    // 属性成长计算
+    private void ApplyEnhancement(Item item)
+    {
+        float growthRate = GetGrowthRate(item.Rarity);
+        
+        // 基础属性提升
+        item.stats.Attack *= (1 + growthRate);
+        item.stats.Defense *= (1 + growthRate);
+        // ... 其他属性提升
+        
+        item.EnhanceLevel++;
+    }
+}
+```
+
+### 4.3 附魔系统
+```csharp
+public class EnchantSystem
+{
+    // 附魔效果
+    public class Enchantment
+    {
+        public string Name;              // 附魔名称
+        public EnchantType Type;         // 附魔类型
+        public float Power;              // 效果强度
+        public int Duration;             // 持续时间
+        public List<StatModifier> Mods;  // 属性修改器
+    }
+    
+    // 添加附魔
+    public bool AddEnchantment(Item item, Enchantment enchant)
+    {
+        if (!CanEnchant(item, enchant))
+            return false;
+            
+        // 检查附魔槽位
+        if (item.enchantments.Count >= GetMaxEnchantSlots(item))
+            return false;
+            
+        // 应用附魔效果
+        item.enchantments.Add(enchant);
+        ApplyEnchantmentEffects(item, enchant);
+        
+        return true;
+    }
+    
+    // 移除附魔
+    public void RemoveEnchantment(Item item, Enchantment enchant)
+    {
+        item.enchantments.Remove(enchant);
+        RemoveEnchantmentEffects(item, enchant);
+    }
+}
+```
+
+### 4.4 宝石系统
+```csharp
+public class GemSystem
+{
+    // 宝石类型
+    public enum GemType
+    {
+        Ruby,       // 红宝石 (攻击)
+        Sapphire,   // 蓝宝石 (魔法)
+        Emerald,    // 绿宝石 (敏捷)
+        Diamond,    // 钻石 (全属性)
+        Topaz,      // 黄玉 (幸运)
+        Amethyst    // 紫晶 (特殊效果)
+    }
+    
+    // 镶嵌宝石
+    public bool SocketGem(Item item, Gem gem, int slotIndex)
+    {
+        if (!CanSocketGem(item, gem, slotIndex))
+            return false;
+            
+        // 添加宝石
+        item.gems[slotIndex] = gem;
+        
+        // 应用宝石效果
+        ApplyGemEffects(item, gem);
+        
+        return true;
+    }
+    
+    // 移除宝石
+    public Gem RemoveGem(Item item, int slotIndex)
+    {
+        Gem gem = item.gems[slotIndex];
+        if (gem != null)
+        {
+            RemoveGemEffects(item, gem);
+            item.gems[slotIndex] = null;
+        }
+        return gem;
+    }
+}
+```
+
+### 4.5 改造系统
+```csharp
+public class ModificationSystem
+{
+    // 改造方案
+    public class Modification
+    {
+        public string Name;                  // 改造名称
+        public ModificationType Type;        // 改造类型
+        public List<StatModifier> Effects;   // 改造效果
+        public List<ItemRequirement> Reqs;   // 要求
+    }
+    
+    // 应用改造
+    public bool ApplyModification(Item item, Modification mod)
+    {
+        if (!CanModify(item, mod))
+            return false;
+            
+        // 检查改造要求
+        if (!CheckRequirements(item, mod.Reqs))
+            return false;
+            
+        // 应用改造效果
+        foreach (var effect in mod.Effects)
+        {
+            ApplyModificationEffect(item, effect);
+        }
+        
+        item.modifications.Add(mod);
+        return true;
+    }
+    
+    // 移除改造
+    public void RemoveModification(Item item, Modification mod)
+    {
+        foreach (var effect in mod.Effects)
+        {
+            RemoveModificationEffect(item, effect);
+        }
+        
+        item.modifications.Remove(mod);
+    }
+}
+```
+
+### 4.6 强化界面示例
+```csharp
+public class EnhanceUI : MonoBehaviour
+{
+    public void OnEnhanceButtonClick()
+    {
+        // 获取选中的物品和材料
+        Item targetItem = selectedSlot.item;
+        List<Item> materials = GetSelectedMaterials();
+        
+        // 尝试强化
+        bool success = enhanceSystem.TryEnhance(targetItem, materials);
+        
+        // 更新UI
+        if (success)
+        {
+            ShowSuccessEffect();
+            UpdateItemDisplay();
+        }
+        else
+        {
+            ShowFailEffect();
+        }
+        
+        // 更新材料显示
+        UpdateMaterialsList();
+    }
+}
 ```
 
 ## 5. 耐久度系统
 
-### 5.1 耐久度系统核心实现
-耐久度系统用于管理装备的使用寿命和状态：
+### 5.1 系统概述
+耐久系统管理物品的使用寿命和损耗：
+- 耐久度管理
+- 损耗计算
+- 修理系统
+- 破损状态
+- 物品销毁
 
 ```mermaid
-stateDiagram-v2
-    [*] --> 完好状态
-    完好状态 --> 良好状态: 耐久度降低
-    良好状态 --> 受损状态: 继续使用
-    受损状态 --> 危险状态: 未及时修理
-    危险状态 --> 损坏状态: 继续使用
+graph TD
+    A[耐久系统] --> B[耐久度管理]
+    A --> C[损耗计算]
+    A --> D[修理系统]
+    A --> E[状态管理]
     
-    完好状态 --> 完好状态: 修理
-    良好状态 --> 完好状态: 修理
-    受损状态 --> 完好状态: 修理
-    危险状态 --> 完好状态: 修理
-    损坏状态 --> 完好状态: 特殊修理
+    B --> B1[最大耐久]
+    B --> B2[当前耐久]
+    B --> B3[耐久消耗]
+    
+    C --> C1[使用损耗]
+    C --> C2[战斗损耗]
+    C --> C3[时间损耗]
+    
+    D --> D1[修理材料]
+    D --> D2[修理费用]
+    D --> D3[修理效果]
+    
+    E --> E1[正常状态]
+    E --> E2[受损状态]
+    E --> E3[破损状态]
 ```
 
-```mermaid
-flowchart TD
-    A[战斗行为] --> B{行为类型}
-    B -->|普通攻击| C[减少1点耐久]
-    B -->|防御| D[减少0.5点耐久]
-    B -->|特殊技能| E[减少2点耐久]
-    C & D & E --> F{检查状态}
-    F -->|低于阈值| G[状态变化]
-    G --> H[属性衰减]
+### 5.2 耐久度系统实现
+```csharp
+public class DurabilitySystem
+{
+    // 耐久度状态
+    public enum DurabilityState
+    {
+        Normal,     // 正常
+        Damaged,    // 受损
+        Broken,     // 破损
+        Destroyed   // 销毁
+    }
+    
+    // 获取当前状态
+    public DurabilityState GetState(Item item)
+    {
+        float ratio = item.CurrentDurability / item.MaxDurability;
+        
+        if (ratio <= 0) return DurabilityState.Destroyed;
+        if (ratio < 0.2f) return DurabilityState.Broken;
+        if (ratio < 0.5f) return DurabilityState.Damaged;
+        return DurabilityState.Normal;
+    }
+    
+    // 计算损耗
+    public void ApplyWear(Item item, float amount, WearType type)
+    {
+        if (!item.CanBeBroken) return;
+        
+        float wear = CalculateWear(amount, type);
+        item.CurrentDurability = Mathf.Max(0, item.CurrentDurability - wear);
+        
+        if (item.CurrentDurability <= 0)
+        {
+            OnItemDestroyed(item);
+        }
+    }
+    
+    // 修理物品
+    public bool RepairItem(Item item, float repairAmount)
+    {
+        if (item.IsDestroyed) return false;
+        
+        item.CurrentDurability = Mathf.Min(
+            item.MaxDurability, 
+            item.CurrentDurability + repairAmount
+        );
+        
+        return true;
+    }
+}
 ```
 
-### 5.2 耐久度UI实现
-
-```mermaid
-classDiagram
-    DurabilityUI o-- DurabilityBar
-    DurabilityUI o-- WarningIcon
-    
-    class DurabilityUI {
-        -Image durabilityBar
-        -Text durabilityText
-        -Image warningIcon
-        +UpdateUI(Item)
-        +ShowWarning()
+### 5.3 修理系统实现
+```csharp
+public class RepairSystem
+{
+    // 修理配方
+    public class RepairRecipe
+    {
+        public List<ItemRequirement> Materials;
+        public float RepairAmount;
+        public float Cost;
     }
     
-    class DurabilityBar {
-        -float fillAmount
-        -Color barColor
-        +UpdateFill(float)
-        +UpdateColor(float)
+    // 尝试修理
+    public bool TryRepair(Item item, List<Item> materials)
+    {
+        // 获取修理配方
+        RepairRecipe recipe = GetRepairRecipe(item);
+        if (recipe == null) return false;
+        
+        // 检查材料
+        if (!CheckMaterials(materials, recipe.Materials))
+            return false;
+            
+        // 执行修理
+        ConsumeMaterials(materials);
+        return durabilitySystem.RepairItem(item, recipe.RepairAmount);
     }
+    
+    // 计算修理费用
+    public float CalculateRepairCost(Item item)
+    {
+        float durabilityLoss = item.MaxDurability - item.CurrentDurability;
+        float ratio = durabilityLoss / item.MaxDurability;
+        return item.Price * ratio * repairCostMultiplier;
+    }
+}
 ```
 
 ## 6. 附魔系统
 
-### 6.1 附魔系统核心实现
-附魔系统用于为装备添加特殊效果：
+### 6.1 系统概述
+附魔系统提供了装备特殊效果的功能：
+- 附魔效果
+- 附魔材料
+- 附魔限制
 
+```mermaid
+graph TD
+    A[附魔系统] --> B[附魔效果]
+    A --> C[附魔材料]
+    A --> D[附魔限制]
+    
+    B --> B1[效果强度]
+    B --> B2[持续时间]
+    B --> B3[属性修改]
+    
+    C --> C1[效果材料]
+    C --> C2[效果类型]
+    C --> C3[效果限制]
+```
+
+### 6.2 附魔效果
 ```csharp
-public class EnchantmentSystem
+public class Enchantment
 {
-    // 附魔基础类
-    [System.Serializable]
-    public class Enchantment
-    {
-        public string name;                // 附魔名称
-        public string description;         // 附魔描述
-        public int level;                  // 当前等级
-        public int maxLevel = 5;           // 最大等级
-        public EnchantmentType type;       // 附魔类型
-        public Dictionary<string, float> bonusStats; // 属性加成
-
-        public Enchantment(string name, string desc)
-        {
-            this.name = name;
-            this.description = desc;
-            this.level = 1;
-            this.bonusStats = new Dictionary<string, float>();
-        }
-
-        // 升级附魔
-        public bool Upgrade()
-        {
-            if (level >= maxLevel) return false;
-            level++;
-            UpdateBonusStats();
-            return true;
-        }
-    }
-
-    // 附魔类型
-    public enum EnchantmentType
-    {
-        ElementalDamage,    // 元素伤害
-        StatBoost,          // 属性提升
-        SpecialEffect       // 特殊效果
-    }
-
-    // 元素类型
-    public enum ElementType
-    {
-        Fire,       // 火焰
-        Ice,        // 冰霜
-        Lightning,  // 闪电
-        Poison      // 毒素
-    }
-
-    // 元素附魔实现
-    public class ElementalEnchantment : Enchantment
-    {
-        public ElementType elementType;
-
-        public ElementalEnchantment(string name, string desc, ElementType type) 
-            : base(name, desc)
-        {
-            this.elementType = type;
-            this.type = EnchantmentType.ElementalDamage;
-            InitializeElementalBonus();
-        }
-
-        private void InitializeElementalBonus()
-        {
-            switch (elementType)
-            {
-                case ElementType.Fire:
-                    bonusStats.Add("fireDamage", 10f);
-                    break;
-                case ElementType.Ice:
-                    bonusStats.Add("iceDamage", 8f);
-                    bonusStats.Add("slowEffect", 5f);
-                    break;
-                case ElementType.Lightning:
-                    bonusStats.Add("lightningDamage", 12f);
-                    bonusStats.Add("attackSpeed", 5f);
-                    break;
-                case ElementType.Poison:
-                    bonusStats.Add("poisonDamage", 6f);
-                    bonusStats.Add("dotDuration", 3f);
-                    break;
-            }
-        }
-    }
-
-    // 附魔管理器
-    public class EnchantmentManager
-    {
-        private List<Enchantment> enchantments = new List<Enchantment>();
-        private const int MAX_ENCHANTMENTS = 3;
-
-        // 添加附魔
-        public bool AddEnchantment(Enchantment enchantment)
-        {
-            if (enchantments.Count >= MAX_ENCHANTMENTS)
-                return false;
-
-            var existing = enchantments.Find(e => e.name == enchantment.name);
-            if (existing != null)
-            {
-                return existing.Upgrade();
-            }
-
-            enchantments.Add(enchantment);
-            return true;
-        }
-
-        // 计算附魔效果
-        public Dictionary<string, float> CalculateEnchantmentEffects()
-        {
-            Dictionary<string, float> totalEffects = new Dictionary<string, float>();
-
-            foreach (var enchant in enchantments)
-            {
-                foreach (var bonus in enchant.bonusStats)
-                {
-                    if (totalEffects.ContainsKey(bonus.Key))
-                        totalEffects[bonus.Key] += bonus.Value * enchant.level;
-                    else
-                        totalEffects[bonus.Key] = bonus.Value * enchant.level;
-                }
-            }
-
-            return totalEffects;
-        }
-    }
+    public string Name;              // 附魔名称
+    public EnchantType Type;         // 附魔类型
+    public float Power;              // 效果强度
+    public int Duration;             // 持续时间
+    public List<StatModifier> Mods;  // 属性修改器
 }
 ```
 
-### 6.2 附魔UI实现
+### 6.3 附魔材料
+```csharp
+public class Gem
+{
+    public GemType Type;        // 宝石类型
+    public float Power;         // 宝石效果强度
+    public int Duration;        // 宝石效果持续时间
+    public List<StatModifier> Mods;  // 宝石效果属性修改器
+}
+```
 
-```mermaid
-classDiagram
-    EnchantUI o-- EnchantSlot
-    EnchantUI o-- MaterialSlot
-    
-    class EnchantUI {
-        +List~EnchantSlot~ slots
-        +UpdateUI()
-        +OnEnchantConfirm()
-    }
-    
-    class EnchantSlot {
-        +Enchantment enchant
-        +UpdateDisplay()
-        +OnSelect()
-    }
+### 6.4 附魔限制
+```csharp
+public class EnchantmentLimit
+{
+    public int MaxSlots;        // 最大附魔槽位数
+    public List<EnchantType> AllowedTypes;  // 允许的附魔类型
+    public List<EnchantType> DisallowedTypes; // 禁止的附魔类型
+}
 ```
 
 ## 7. 套装系统
 
-### 7.1 套装系统核心实现
-套装系统用于管理装备的套装效果：
-
-```csharp
-public class SetSystem
-{
-    // 套装数据结构
-    [System.Serializable]
-    public class SetData
-    {
-        public string setName;           // 套装名称
-        public string description;       // 套装描述
-        public List<SetBonus> bonuses;   // 套装效果列表
-        public List<int> itemIds;        // 套装包含的物品ID
-    }
-
-    // 套装效果数据结构
-    [System.Serializable]
-    public class SetBonus
-    {
-        public int requiredPieces;       // 激活所需件数
-        public string description;       // 效果描述
-        public EquipmentStats bonusStats; // 属性加成
-        public SpecialEffect specialEffect; // 特殊效果
-    }
-
-    // 套装管理器
-    public class SetManager
-    {
-        private Dictionary<string, SetData> setDatabase = new Dictionary<string, SetData>();
-        private Dictionary<string, HashSet<Item>> equippedSets = new Dictionary<string, HashSet<Item>>();
-
-        // 初始化套装数据
-        public void Initialize(List<SetData> setDataList)
-        {
-            foreach (var setData in setDataList)
-            {
-                setDatabase[setData.setName] = setData;
-                equippedSets[setData.setName] = new HashSet<Item>();
-            }
-        }
-
-        // 装备物品时检查套装
-        public void OnItemEquipped(Item item)
-        {
-            if (string.IsNullOrEmpty(item.setName)) return;
-
-            if (!equippedSets.ContainsKey(item.setName))
-            {
-                equippedSets[item.setName] = new HashSet<Item>();
-            }
-            equippedSets[item.setName].Add(item);
-
-            // 检查并激活套装效果
-            CheckSetBonuses(item.setName);
-        }
-
-        // 卸下物品时检查套装
-        public void OnItemUnequipped(Item item)
-        {
-            if (string.IsNullOrEmpty(item.setName)) return;
-
-            if (equippedSets.ContainsKey(item.setName))
-            {
-                equippedSets[item.setName].Remove(item);
-                // 重新检查套装效果
-                CheckSetBonuses(item.setName);
-            }
-        }
-
-        // 检查套装效果
-        private void CheckSetBonuses(string setName)
-        {
-            if (!setDatabase.ContainsKey(setName)) return;
-
-            SetData setData = setDatabase[setName];
-            int equippedCount = equippedSets[setName].Count;
-
-            foreach (var bonus in setData.bonuses)
-            {
-                if (equippedCount >= bonus.requiredPieces)
-                {
-                    // 激活套装效果
-                    ApplySetBonus(bonus);
-                }
-                else
-                {
-                    // 移除套装效果
-                    RemoveSetBonus(bonus);
-                }
-            }
-        }
-
-        // 应用套装效果
-        private void ApplySetBonus(SetBonus bonus)
-        {
-            // 应用属性加成
-            if (bonus.bonusStats != null)
-            {
-                PlayerStats.Instance.AddBonusStats(bonus.bonusStats);
-            }
-
-            // 应用特殊效果
-            if (bonus.specialEffect != null)
-            {
-                bonus.specialEffect.Apply();
-            }
-
-            // 触发套装效果激活事件
-            OnSetBonusActivated?.Invoke(bonus);
-        }
-    }
-
-    // 特殊效果系统
-    public abstract class SpecialEffect
-    {
-        public abstract void Apply();
-        public abstract void Remove();
-    }
-}
-```
-
-### 7.2 套装UI实现
+### 7.1 系统概述
+套装系统提供了装备套装效果的功能：
+- 套装名称
+- 所需件数
+- 套装加成
 
 ```mermaid
-classDiagram
-    SetUI o-- SetBonusDisplay
-    SetUI o-- SetPieceDisplay
+graph TD
+    A[套装系统] --> B[套装名称]
+    A --> C[所需件数]
+    A --> D[套装加成]
     
-    class SetUI {
-        +UpdateSetInfo()
-        +ShowActiveBonuses()
-    }
+    B --> B1[套装名称]
+    B --> B2[所需件数]
+    B --> B3[套装加成]
+```
+
+### 7.2 套装效果
+```csharp
+public class SetBonus
+{
+    public string SetName;           // 套装名称
+    public int RequiredPieces;       // 所需件数
+    public List<StatBonus> Bonuses;  // 套装加成
     
-    class SetBonusDisplay {
-        +bool isActive
-        +UpdateStatus()
-        +ShowEffect()
+    // 检查套装效果是否激活
+    public bool IsActive(int equippedPieces)
+    {
+        return equippedPieces >= RequiredPieces;
     }
+}
+
+public class StatBonus
+{
+    public StatType Type;            // 属性类型
+    public float Value;              // 加成值
+    public bool IsPercentage;        // 是否百分比
+    
+    // 计算属性加成
+    public float CalculateBonus(float baseValue)
+    {
+        return IsPercentage ? baseValue * (Value / 100) : Value;
+    }
+}
 ```
 
 ## 8. UI系统
 
-### 8.1 背包UI核心实现
-背包UI系统负责显示和管理物品界面：
+### 8.1 系统概述
+UI交互系统处理所有物品相关的用户界面交互：
+- 物品栏界面
+- 装备界面
+- 物品操作
+- 拖放系统
+- 上下文菜单
 
+```mermaid
+graph TD
+    A[UI交互系统] --> B[物品栏UI]
+    A --> C[装备UI]
+    A --> D[交互控制]
+    A --> E[反馈系统]
+    
+    B --> B1[物品格子]
+    B --> B2[物品信息]
+    B --> B3[分类标签]
+    
+    C --> C1[装备槽位]
+    C --> C2[角色模型]
+    C --> C3[属性面板]
+    
+    D --> D1[拖放操作]
+    D --> D2[右键菜单]
+    D --> D3[快捷键]
+    
+    E --> E1[提示信息]
+    E --> E2[动画效果]
+    E --> E3[音效反馈]
+```
+
+### 8.2 物品栏UI实现
 ```csharp
-public class UIInventory : MonoBehaviour
+public class InventoryUI : MonoBehaviour
 {
-    // UI组件引用
-    [SerializeField] private GameObject slotPrefab;
-    [SerializeField] private Transform slotsParent;
-    [SerializeField] private ItemTooltip tooltip;
-    [SerializeField] private GameObject draggedItemPrefab;
-
-    // 核心引用
+    // UI组件
+    public GridLayoutGroup gridLayout;
+    public UIItemSlot[] itemSlots;
+    public UIItemTooltip tooltip;
+    public UIItemContextMenu contextMenu;
+    
+    // 物品栏数据
     private Inventory inventory;
-    private List<UIItemSlot> uiSlots = new List<UIItemSlot>();
-    private UIItemSlot draggedSlot;
-    private GameObject draggedItem;
-
-    // 初始化方法
-    public void Initialize(Inventory inv)
+    private int selectedSlotIndex = -1;
+    
+    // 初始化UI
+    private void InitializeUI()
     {
-        inventory = inv;
-        CreateSlots();
-        RegisterEvents();
-        UpdateUI();
-    }
-
-    // 创建物品槽
-    private void CreateSlots()
-    {
-        // 清理现有槽位
-        foreach (Transform child in slotsParent)
+        // 创建物品格子
+        itemSlots = new UIItemSlot[inventory.Capacity];
+        for (int i = 0; i < inventory.Capacity; i++)
         {
-            Destroy(child.gameObject);
+            UIItemSlot slot = CreateItemSlot();
+            slot.SlotIndex = i;
+            itemSlots[i] = slot;
         }
-        uiSlots.Clear();
-
-        // 创建新槽位
-        for (int i = 0; i < inventory.inventorySize; i++)
-        {
-            GameObject slotObj = Instantiate(slotPrefab, slotsParent);
-            UIItemSlot slot = slotObj.GetComponent<UIItemSlot>();
-            slot.Initialize(i, this);
-            uiSlots.Add(slot);
-        }
-    }
-
-    // 注册事件
-    private void RegisterEvents()
-    {
+        
+        // 注册事件
         inventory.OnItemAdded += OnItemAdded;
         inventory.OnItemRemoved += OnItemRemoved;
-        inventory.OnItemUsed += OnItemUsed;
+        inventory.OnItemUpdated += OnItemUpdated;
     }
-
+    
     // 更新UI显示
-    public void UpdateUI()
+    private void UpdateUI()
     {
-        for (int i = 0; i < inventory.slots.Length; i++)
+        for (int i = 0; i < itemSlots.Length; i++)
         {
-            if (i < uiSlots.Count)
-            {
-                uiSlots[i].UpdateUI(inventory.slots[i]);
-            }
+            Item item = inventory.GetItemAt(i);
+            itemSlots[i].UpdateUI(item);
         }
     }
 }
 ```
 
-### 8.2 物品槽UI实现
-
+### 8.3 拖放系统实现
 ```csharp
-public class UIItemSlot : MonoBehaviour, IPointerClickHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
+public class DragDropSystem : MonoBehaviour
 {
-    [SerializeField] private Image itemIcon;
-    [SerializeField] private Image background;
-    [SerializeField] private Image qualityFrame;
-    [SerializeField] private Text amountText;
-    [SerializeField] private Image durabilityBar;
-
-    private int slotIndex;
-    private UIInventory uiInventory;
-    private ItemSlot itemSlot;
-    private bool isDragging;
-
-    // 初始化
-    public void Initialize(int index, UIInventory ui)
+    private UIItemSlot draggedSlot;
+    private GameObject draggedIcon;
+    private Vector3 dragOffset;
+    
+    // 开始拖拽
+    public void OnBeginDrag(UIItemSlot slot)
     {
-        slotIndex = index;
-        uiInventory = ui;
-        ResetSlot();
-    }
-
-    // 更新UI显示
-    public void UpdateUI(ItemSlot slot)
-    {
-        itemSlot = slot;
+        if (slot.IsEmpty || slot.IsLocked) return;
         
-        if (slot.IsEmpty())
+        draggedSlot = slot;
+        draggedIcon = CreateDraggedIcon(slot.Icon);
+        dragOffset = Input.mousePosition - slot.transform.position;
+    }
+    
+    // 拖拽中
+    public void OnDrag()
+    {
+        if (draggedIcon != null)
         {
-            ResetSlot();
-            return;
-        }
-
-        // 更新物品图标
-        itemIcon.gameObject.SetActive(true);
-        itemIcon.sprite = slot.item.icon;
-
-        // 更新品质边框
-        qualityFrame.gameObject.SetActive(true);
-        qualityFrame.color = GetQualityColor(slot.item.rarity);
-
-        // 更新数量显示
-        if (slot.amount > 1)
-        {
-            amountText.gameObject.SetActive(true);
-            amountText.text = slot.amount.ToString();
-        }
-        else
-        {
-            amountText.gameObject.SetActive(false);
-        }
-
-        // 更新耐久度条
-        if (slot.item.maxDurability > 0)
-        {
-            durabilityBar.gameObject.SetActive(true);
-            float durabilityPercent = slot.item.currentDurability / slot.item.maxDurability;
-            durabilityBar.fillAmount = durabilityPercent;
-            durabilityBar.color = GetDurabilityColor(durabilityPercent);
-        }
-        else
-        {
-            durabilityBar.gameObject.SetActive(false);
+            draggedIcon.transform.position = Input.mousePosition - dragOffset;
         }
     }
-
-    // 处理拖拽事件
-    public void OnBeginDrag(PointerEventData eventData)
+    
+    // 结束拖拽
+    public void OnEndDrag(UIItemSlot targetSlot)
     {
-        if (!itemSlot.IsEmpty())
+        if (draggedSlot != null && targetSlot != null)
         {
-            isDragging = true;
-            uiInventory.OnBeginDrag(this);
+            // 处理物品交换
+            inventory.SwapItems(draggedSlot.SlotIndex, targetSlot.SlotIndex);
         }
-    }
-
-    public void OnDrag(PointerEventData eventData)
-    {
-        if (isDragging)
-        {
-            uiInventory.OnDrag(eventData.position);
-        }
-    }
-
-    public void OnEndDrag(PointerEventData eventData)
-    {
-        if (isDragging)
-        {
-            isDragging = false;
-            uiInventory.OnEndDrag(eventData);
-        }
+        
+        // 清理拖拽状态
+        Destroy(draggedIcon);
+        draggedSlot = null;
     }
 }
 ```
 
-### 8.3 物品提示框系统实现
-物品提示框用于显示物品的详细信息：
-
+### 8.4 上下文菜单实现
 ```csharp
-public class ItemTooltip : MonoBehaviour
+public class ItemContextMenu : MonoBehaviour
 {
-    // UI组件引用
-    [SerializeField] private Text itemNameText;
-    [SerializeField] private Text itemTypeText;
-    [SerializeField] private Text rarityText;
-    [SerializeField] private Text descriptionText;
-    [SerializeField] private Text statsText;
-    [SerializeField] private Text setBonusText;
-    [SerializeField] private Text enchantmentText;
-    [SerializeField] private Image background;
-    [SerializeField] private LayoutGroup contentLayout;
-
-    private static ItemTooltip instance;
-    private RectTransform rectTransform;
-
-    private void Awake()
+    // 菜单选项
+    public Button useButton;
+    public Button equipButton;
+    public Button splitButton;
+    public Button dropButton;
+    
+    // 显示菜单
+    public void Show(UIItemSlot slot, Vector2 position)
     {
-        instance = this;
-        rectTransform = GetComponent<RectTransform>();
-        gameObject.SetActive(false);
-    }
-
-    // 显示提示框
-    public static void Show(Item item, Vector2 position)
-    {
-        instance.gameObject.SetActive(true);
-        instance.UpdateContent(item);
-        instance.UpdatePosition(position);
-    }
-
-    // 隐藏提示框
-    public static void Hide()
-    {
-        instance.gameObject.SetActive(false);
-    }
-
-    // 更新提示框内容
-    private void UpdateContent(Item item)
-    {
-        // 更新基本信息
-        itemNameText.text = item.itemName;
-        itemNameText.color = item.GetRarityColor();
-        itemTypeText.text = $"[{item.itemType}] 等级 {item.level}";
-        rarityText.text = item.rarity.ToString();
-        descriptionText.text = item.description;
-
-        // 更新属性信息
-        StringBuilder stats = new StringBuilder();
-        if (item.stats.hp != 0) stats.AppendLine($"生命值: +{item.stats.hp}");
-        if (item.stats.mp != 0) stats.AppendLine($"魔法值: +{item.stats.mp}");
-        if (item.stats.attack != 0) stats.AppendLine($"攻击力: +{item.stats.attack}");
-        if (item.stats.defense != 0) stats.AppendLine($"防御力: +{item.stats.defense}");
-        if (item.stats.speed != 0) stats.AppendLine($"速度: +{item.stats.speed}");
-        if (item.stats.critRate != 0) stats.AppendLine($"暴击率: +{item.stats.critRate}%");
-        if (item.stats.dodgeRate != 0) stats.AppendLine($"闪避率: +{item.stats.dodgeRate}%");
-        statsText.text = stats.ToString();
-
-        // 更新套装信息
-        if (!string.IsNullOrEmpty(item.setName))
-        {
-            StringBuilder setInfo = new StringBuilder();
-            setInfo.AppendLine($"\n{item.setName}套装");
-            foreach (var bonus in item.setBonuses)
-            {
-                setInfo.AppendLine($"{bonus.requiredPieces}件套装效果:");
-                setInfo.AppendLine($"  {bonus.description}");
-            }
-            setBonusText.text = setInfo.ToString();
-            setBonusText.gameObject.SetActive(true);
-        }
-        else
-        {
-            setBonusText.gameObject.SetActive(false);
-        }
-
-        // 更新附魔信息
-        if (item.enchantments.Count > 0)
-        {
-            StringBuilder enchantInfo = new StringBuilder();
-            enchantInfo.AppendLine("\n附魔效果:");
-            foreach (var enchant in item.enchantments)
-            {
-                enchantInfo.AppendLine($"{enchant.name} Lv.{enchant.level}");
-                enchantInfo.AppendLine($"  {enchant.description}");
-            }
-            enchantmentText.text = enchantInfo.ToString();
-            enchantmentText.gameObject.SetActive(true);
-        }
-        else
-        {
-            enchantmentText.gameObject.SetActive(false);
-        }
-
-        // 刷新布局
-        LayoutRebuilder.ForceRebuildLayoutImmediate(contentLayout.GetComponent<RectTransform>());
-    }
-
-    // 更新提示框位置
-    private void UpdatePosition(Vector2 position)
-    {
-        // 获取屏幕尺寸
-        Vector2 screenSize = new Vector2(Screen.width, Screen.height);
+        if (slot.IsEmpty) return;
         
-        // 计算提示框尺寸
-        Vector2 tooltipSize = rectTransform.sizeDelta;
+        currentSlot = slot;
+        transform.position = position;
         
-        // 调整位置，确保提示框不会超出屏幕
-        float xPos = position.x + tooltipSize.x > screenSize.x ? 
-            position.x - tooltipSize.x : position.x;
-        float yPos = position.y + tooltipSize.y > screenSize.y ? 
-            position.y - tooltipSize.y : position.y;
-
-        rectTransform.position = new Vector2(xPos, yPos);
+        // 更新选项状态
+        useButton.gameObject.SetActive(CanUseItem(slot.Item));
+        equipButton.gameObject.SetActive(CanEquipItem(slot.Item));
+        splitButton.gameObject.SetActive(CanSplitItem(slot.Item));
+        
+        gameObject.SetActive(true);
+    }
+    
+    // 处理选项点击
+    public void OnUseButtonClick()
+    {
+        if (currentSlot != null)
+        {
+            currentSlot.Item.Use();
+            Hide();
+        }
+    }
+    
+    public void OnEquipButtonClick()
+    {
+        if (currentSlot != null)
+        {
+            equipmentSystem.EquipItem(currentSlot.Item);
+            Hide();
+        }
     }
 }
 ```
 
 ## 9. 实战示例
 
-### 9.1 完整游戏示例
-下面是一个完整的游戏示例，展示如何集成所有系统：
-
-```mermaid
-flowchart TD
-    A[游戏启动] --> B[初始化系统]
-    B --> C[加载数据]
-    B --> D[初始化UI]
-    C --> E[创建测试物品]
-    D --> F[注册事件]
-    E & F --> G[游戏运行]
-    
-    subgraph 系统初始化
-        B1[背包系统] --> B2[套装系统]
-        B2 --> B3[附魔系统]
-        B3 --> B4[UI系统]
-    end
-```
-
-### 9.2 实战练习
-
-#### 练习1: 实现物品过滤和排序
-```mermaid
-classDiagram
-    class InventoryFilter {
-        +FilterOptions options
-        +FilterItems()
-        +SortItems()
-    }
-    
-    class CraftingSystem {
-        +List~Recipe~ recipes
-        +CanCraft()
-        +Craft()
-    }
-    
-    class SaveSystem {
-        +SaveInventory()
-        +LoadInventory()
-        -SerializeItems()
-        -DeserializeItems()
-    }
-```
-
-#### 练习2: 实现物品合成系统
+### 9.1 创建物品
 ```csharp
-public class CraftingSystem
+// 创建物品时的类型设置
+public Item CreateWeapon(ItemType type)
 {
-    // 合成配方
-    public class Recipe
-    {
-        public List<ItemRequirement> requirements;
-        public Item result;
-        public int resultAmount;
-    }
+    // 验证类型
+    if (!IsValidWeaponType(type))
+        throw new ArgumentException("Invalid weapon type");
+        
+    // 创建物品
+    Item weapon = new Item();
+    weapon.Category = ItemCategory.Equipment;
+    weapon.Type = type;
+    
+    // 根据类型初始化属性
+    InitializeWeaponStats(weapon);
+    
+    return weapon;
+}
 
-    // 检查是否可以合成
-    public bool CanCraft(Recipe recipe, Inventory inventory)
-    {
-        foreach (var req in recipe.requirements)
-        {
-            int count = inventory.GetItemCount(req.itemId);
-            if (count < req.amount) return false;
-        }
-        return true;
-    }
-
-    // 执行合成
-    public bool Craft(Recipe recipe, Inventory inventory)
-    {
-        if (!CanCraft(recipe, inventory)) return false;
-
-        // 扣除材料
-        foreach (var req in recipe.requirements)
-        {
-            inventory.RemoveItemById(req.itemId, req.amount);
-        }
-
-        // 添加成品
-        inventory.AddItem(recipe.result, recipe.resultAmount);
-        return true;
-    }
+// 类型验证
+private bool IsValidWeaponType(ItemType type)
+{
+    int typeValue = (int)type;
+    return typeValue >= 100 && typeValue < 500;
 }
 ```
 
-#### 练习3: 实现存档系统
+### 9.2 使用物品
 ```csharp
-public class SaveSystem
+public void UseItem(Item item)
 {
-    // 物品数据序列化
-    [System.Serializable]
-    public class ItemData
+    if (item.Category == ItemCategory.Consumable)
     {
-        public int id;
-        public int amount;
-        public float durability;
-        public List<EnchantmentData> enchantments;
+        Consumable consumable = item as Consumable;
+        consumable.Use();
     }
-
-    // 保存背包数据
-    public void SaveInventory(Inventory inventory, string savePath)
+    else if (item.Category == ItemCategory.Equipment)
     {
-        List<ItemData> itemDataList = new List<ItemData>();
-        
-        foreach (var slot in inventory.slots)
-        {
-            if (!slot.IsEmpty())
-            {
-                itemDataList.Add(new ItemData
-                {
-                    id = slot.item.id,
-                    amount = slot.amount,
-                    durability = slot.item.currentDurability,
-                    enchantments = SerializeEnchantments(slot.item.enchantments)
-                });
-            }
-        }
-
-        string json = JsonUtility.ToJson(new { items = itemDataList });
-        File.WriteAllText(savePath, json);
-    }
-
-    // 加载背包数据
-    public void LoadInventory(Inventory inventory, string savePath)
-    {
-        if (!File.Exists(savePath)) return;
-
-        string json = File.ReadAllText(savePath);
-        var data = JsonUtility.FromJson<InventoryData>(json);
-
-        inventory.Clear();
-        foreach (var itemData in data.items)
-        {
-            Item item = ItemDatabase.Instance.GetItemById(itemData.id);
-            item.currentDurability = itemData.durability;
-            item.enchantments = DeserializeEnchantments(itemData.enchantments);
-            inventory.AddItem(item, itemData.amount);
-        }
+        Equipment equipment = item as Equipment;
+        equipment.Equip();
     }
 }
 ```
 
 ## 10. C#知识要点
 
-### 10.1 泛型和委托
-```mermaid
-classDiagram
-    class IInventorySystem~T~ {
-        <<interface>>
-        +AddItem(T)
-        +RemoveItem(T)
-        +GetItems() List~T~
-    }
-    
-    class EventSystem {
-        +ItemEventHandler OnItemAdded
-        +ItemEventHandler OnItemRemoved
-        +InvokeEvents()
-    }
-```
-
-### 10.2 LINQ的使用
-```mermaid
-flowchart LR
-    A[数据源] --> B[Where过滤]
-    B --> C[Select映射]
-    C --> D[GroupBy分组]
-    D --> E[OrderBy排序]
-    E --> F[最终结果]
-```
-
-### 10.3 异步操作
-```mermaid
-sequenceDiagram
-    participant UI
-    participant LoadSystem
-    participant FileSystem
-    
-    UI->>LoadSystem: 请求加载数据
-    LoadSystem->>FileSystem: 异步读取文件
-    FileSystem-->>LoadSystem: 返回数据
-    LoadSystem->>UI: 更新进度
-    LoadSystem-->>UI: 加载完成
-```
-
-### 10.4 性能优化技巧
-```mermaid
-flowchart TD
-    A[性能优化] --> B[对象池]
-    A --> C[缓存系统]
-    A --> D[延迟加载]
-    A --> E[批处理]
-    
-    B --> B1[预实例化]
-    B --> B2[对象复用]
-    
-    C --> C1[内存缓存]
-    C --> C2[磁盘缓存]
-    
-    D --> D1[按需加载]
-    D --> D2[资源释放]
-    
-    E --> E1[合并渲染]
-    E --> E2[合并操作]
-```
-
-## 11. 常见问题(FAQ)
-
-### 11.1 性能相关
-Q: 当背包物品很多时，如何优化性能？
-A: 以下几种方法可以提升性能：
-1. 使用对象池管理UI物品槽
-2. 实现背包分页
-3. 使用脏标记系统，只更新变化的部分
-4. 缓存常用数据
-
-示例实现：
+### 10.1 枚举类型
 ```csharp
-public class OptimizedInventory : MonoBehaviour
+public enum ItemCategory
 {
-    private bool isDirty = false;
-    private HashSet<int> dirtySlots = new HashSet<int>();
-    
-    // 标记需要更新的槽位
-    public void MarkSlotDirty(int slotIndex)
+    Equipment,   // 装备
+    Consumable,  // 消耗品
+    Material,    // 材料
+    Quest,       // 任务物品
+    Misc        // 其他
+}
+```
+
+### 10.2 泛型类型
+```csharp
+public class Inventory<T>
+{
+    private List<T> items = new List<T>();
+
+    public void Add(T item)
     {
-        isDirty = true;
-        dirtySlots.Add(slotIndex);
+        items.Add(item);
     }
-    
-    // 只更新变化的槽位
-    private void UpdateUI()
+
+    public void Remove(T item)
     {
-        if (!isDirty) return;
-        
-        foreach (int slotIndex in dirtySlots)
-        {
-            uiSlots[slotIndex].UpdateUI(slots[slotIndex]);
-        }
-        
-        isDirty = false;
-        dirtySlots.Clear();
+        items.Remove(item);
+    }
+
+    public T GetItemAt(int index)
+    {
+        return items[index];
+    }
+
+    public int Count
+    {
+        get { return items.Count; }
     }
 }
 ```
 
-### 11.2 功能相关
-Q: 如何实现物品的拖拽分组？
-A: 可以在拖拽时添加数量选择界面：
+## 11. 常见问题(FAQ)
+
+### 11.1 如何处理物品销毁
 ```csharp
-public class ItemSplitter : MonoBehaviour
+public void DestroyItem(Item item)
 {
-    public void ShowSplitUI(ItemSlot slot, System.Action<int> onConfirm)
-    {
-        if (slot.amount <= 1) return;
-        
-        splitSlider.maxValue = slot.amount;
-        splitSlider.value = 1;
-        
-        confirmButton.onClick.AddListener(() => {
-            onConfirm?.Invoke((int)splitSlider.value);
-            gameObject.SetActive(false);
-        });
-        
-        gameObject.SetActive(true);
-    }
+    if (item.IsDestroyed) return;
+
+    item.IsDestroyed = true;
+    item.CurrentDurability = 0;
+    // 处理物品销毁后的逻辑
+}
+```
+
+### 11.2 如何处理物品过热
+```csharp
+public bool IsOverheated(Item item)
+{
+    return item.CurrentEnergy > item.MaxEnergy;
 }
 ```
 
 ## 12. 性能测试报告
 
-### 12.1 UI渲染性能
-| 物品数量 | 普通实现 | 优化后 | 提升 |
-|---------|---------|--------|------|
-| 100     | 16ms    | 5ms    | 68%  |
-| 500     | 45ms    | 12ms   | 73%  |
-| 1000    | 92ms    | 20ms   | 78%  |
+### 12.1 物品创建性能
+```csharp
+public Item CreateItem(ItemType type)
+{
+    // 创建物品
+    Item item = new Item();
+    item.Category = ItemCategory.Equipment;
+    item.Type = type;
+    
+    // 根据类型初始化属性
+    InitializeItemStats(item);
+    
+    return item;
+}
 
-### 12.2 内存占用
-- 使用对象池前：每个物品槽约占用2.5KB
-- 使用对象池后：总内存占用减少约65%
+// 初始化物品属性
+private void InitializeItemStats(Item item)
+{
+    // 实现初始化逻辑
+}
+```
+
+### 12.2 物品访问性能
+```csharp
+public Item GetItemById(int id)
+{
+    // 实现根据ID查找物品的逻辑
+}
+```
 
 ## 13. 系统集成示例
 
-### 13.1 与战斗系统集成
+### 13.1 物品系统与角色系统集成
 ```csharp
-public class CombatSystem : MonoBehaviour
+public void EquipItem(Item item)
 {
-    private Inventory inventory;
-    private CharacterStats characterStats;
-    
-    // 装备变更时更新战斗属性
-    private void OnEquipmentChanged(Item item, bool equipped)
+    if (item.Category == ItemCategory.Equipment)
     {
-        if (equipped)
-        {
-            characterStats.AddEquipmentStats(item.stats);
-            // 检查套装效果
-            CheckSetBonus(item);
-        }
-        else
-        {
-            characterStats.RemoveEquipmentStats(item.stats);
-            // 移除套装效果
-            RemoveSetBonus(item);
-        }
-    }
-    
-    // 战斗中使用物品
-    public void UseItemInCombat(Item item)
-    {
-        if (item.type == ItemType.Consumable)
-        {
-            // 应用物品效果
-            ApplyItemEffect(item);
-            // 移除物品
-            inventory.RemoveItem(item);
-            // 触发战斗事件
-            OnItemUsedInCombat?.Invoke(item);
-        }
+        Equipment equipment = item as Equipment;
+        equipment.Equip();
+        // 处理装备后的逻辑
     }
 }
 ```
 
-### 13.2 与商店系统集成
+### 13.2 物品系统与商店系统集成
 ```csharp
-public class ShopSystem : MonoBehaviour
+public void SellItem(Item item)
 {
-    private Inventory playerInventory;
-    private PlayerGold playerGold;
-    
-    // 购买物品
-    public bool BuyItem(Item item, int amount)
-    {
-        int totalCost = item.price * amount;
-        
-        if (!playerGold.HasEnough(totalCost))
-            return false;
-            
-        if (!playerInventory.HasSpace(item, amount))
-            return false;
-            
-        playerGold.Consume(totalCost);
-        playerInventory.AddItem(item, amount);
-        
-        return true;
-    }
-    
-    // 出售物品
-    public void SellItem(Item item, int amount)
-    {
-        int sellPrice = CalculateSellPrice(item, amount);
-        playerInventory.RemoveItem(item, amount);
-        playerGold.Add(sellPrice);
-    }
-    
-    // 计算出售价格
-    private int CalculateSellPrice(Item item, int amount)
-    {
-        float basePrice = item.price * 0.4f; // 基础回收率40%
-        // 考虑物品品质
-        float qualityMultiplier = GetQualityPriceMultiplier(item.rarity);
-        // 考虑耐久度
-        float durabilityMultiplier = item.currentDurability / item.maxDurability;
-        
-        return Mathf.RoundToInt(basePrice * qualityMultiplier * durabilityMultiplier * amount);
-    }
+    // 实现出售物品的逻辑
 }
 ```
 
 ## 14. 调试与错误处理
 
-### 14.1 调试工具
+### 14.1 调试方法
 ```csharp
-public class InventoryDebugger : MonoBehaviour
+public void DebugItem(Item item)
 {
-    [SerializeField] private bool showDebugInfo = false;
-    private Dictionary<string, string> debugInfo = new Dictionary<string, string>();
-
-    void OnGUI()
-    {
-        if (!showDebugInfo) return;
-
-        GUILayout.BeginArea(new Rect(10, 10, 300, 500));
-        GUILayout.Label("背包系统调试信息", GUI.skin.box);
-
-        foreach (var info in debugInfo)
-        {
-            GUILayout.Label($"{info.Key}: {info.Value}");
-        }
-
-        GUILayout.EndArea();
-    }
-
-    public void UpdateDebugInfo(string key, string value)
-    {
-        debugInfo[key] = value;
-    }
+    // 实现调试物品的逻辑
 }
 ```
 
-### 14.2 错误处理指南
+### 14.2 错误处理
 ```csharp
-public class InventoryException : Exception
+public void HandleError(Exception ex)
 {
-    public InventoryErrorType ErrorType { get; private set; }
-
-    public InventoryException(InventoryErrorType type, string message) 
-        : base(message)
-    {
-        ErrorType = type;
-    }
-}
-
-public enum InventoryErrorType
-{
-    ItemNotFound,
-    SlotOutOfRange,
-    InsufficientSpace,
-    InvalidOperation,
-    DataCorruption
-}
-
-// 错误处理示例
-public class ErrorHandler
-{
-    public static void HandleInventoryError(InventoryException ex)
-    {
-        switch (ex.ErrorType)
-        {
-            case InventoryErrorType.ItemNotFound:
-                Debug.LogWarning($"物品未找到: {ex.Message}");
-                // 尝试重新加载物品数据
-                break;
-            case InventoryErrorType.InsufficientSpace:
-                // 显示背包已满提示
-                UIManager.ShowMessage("背包已满！");
-                break;
-            // ... 其他错误处理
-        }
-    }
+    // 实现错误处理逻辑
 }
 ```
 
 ## 15. 扩展功能示例
 
-### 15.1 背包分页系统
+### 15.1 物品属性扩展
 ```csharp
-public class PaginatedInventory : MonoBehaviour
+public void AddAttribute(Item item, Attribute attribute)
 {
-    public int itemsPerPage = 30;
-    private int currentPage = 0;
+    // 实现添加物品属性的逻辑
+}
+```
+
+### 15.2 物品事件扩展
+```csharp
+public void SubscribeToItemEvents(Item item)
+{
+    // 实现订阅物品事件的逻辑
+}
+```
+
+## 16. 性能优化指南
+
+### 16.1 对象池优化
+```csharp
+public class ItemPool : MonoBehaviour
+{
+    private Dictionary<int, Queue<Item>> itemPools = new();
+    private Dictionary<int, int> poolSizes = new();
     
-    public void ShowPage(int pageIndex)
+    // 预热对象池
+    public void WarmUp(int itemId, int count)
     {
-        int startIndex = pageIndex * itemsPerPage;
-        int endIndex = Mathf.Min(startIndex + itemsPerPage, inventory.slots.Length);
-        
-        for (int i = 0; i < uiSlots.Count; i++)
+        if (!itemPools.ContainsKey(itemId))
+            itemPools[itemId] = new Queue<Item>();
+            
+        for (int i = 0; i < count; i++)
         {
-            int slotIndex = startIndex + i;
-            if (slotIndex < endIndex)
+            Item item = CreateNewItem(itemId);
+            itemPools[itemId].Enqueue(item);
+        }
+        
+        poolSizes[itemId] = count;
+    }
+    
+    // 自动扩展池大小
+    private void ExpandPool(int itemId)
+    {
+        int currentSize = poolSizes[itemId];
+        int expandSize = Mathf.Max(5, currentSize / 2);
+        WarmUp(itemId, expandSize);
+    }
+    
+    // 从池中获取物品
+    public Item Get(int itemId)
+    {
+        if (!itemPools.ContainsKey(itemId) || itemPools[itemId].Count == 0)
+        {
+            ExpandPool(itemId);
+        }
+        
+        return itemPools[itemId].Dequeue();
+    }
+    
+    // 返回物品到池中
+    public void Return(Item item)
+    {
+        if (!itemPools.ContainsKey(item.Id))
+            itemPools[item.Id] = new Queue<Item>();
+            
+        // 重置物品状态
+        item.Reset();
+        itemPools[item.Id].Enqueue(item);
+    }
+}
+```
+
+### 16.2 内存管理
+```csharp
+public class ItemMemoryManager
+{
+    // 缓存常用数据
+    private Dictionary<int, ItemData> itemDataCache = new();
+    private Dictionary<int, Sprite> iconCache = new();
+    
+    // 定期清理缓存
+    public void CleanupCache()
+    {
+        var unusedItems = itemDataCache.Where(kvp => 
+            !IsItemInUse(kvp.Key)).ToList();
+            
+        foreach (var item in unusedItems)
+        {
+            itemDataCache.Remove(item.Key);
+            iconCache.Remove(item.Key);
+        }
+    }
+    
+    // 缓存预加载
+    public void PreloadCache(List<int> itemIds)
+    {
+        foreach (int id in itemIds)
+        {
+            if (!itemDataCache.ContainsKey(id))
             {
-                uiSlots[i].gameObject.SetActive(true);
-                uiSlots[i].UpdateUI(inventory.slots[slotIndex]);
+                var itemData = LoadItemData(id);
+                itemDataCache[id] = itemData;
+                
+                var icon = LoadItemIcon(id);
+                iconCache[id] = icon;
             }
-            else
+        }
+    }
+    
+    // 获取缓存数据
+    public ItemData GetItemData(int id)
+    {
+        if (itemDataCache.TryGetValue(id, out var data))
+            return data;
+            
+        return LoadItemData(id);
+    }
+    
+    // 获取缓存图标
+    public Sprite GetItemIcon(int id)
+    {
+        if (iconCache.TryGetValue(id, out var icon))
+            return icon;
+            
+        return LoadItemIcon(id);
+    }
+}
+```
+
+### 16.3 UI性能优化
+```csharp
+public class ItemUIOptimizer
+{
+    // UI对象池
+    private Dictionary<string, Queue<GameObject>> uiPools = new();
+    
+    // UI元素回收
+    public void RecycleUIElement(GameObject element, string poolKey)
+    {
+        if (!uiPools.ContainsKey(poolKey))
+            uiPools[poolKey] = new Queue<GameObject>();
+            
+        element.SetActive(false);
+        uiPools[poolKey].Enqueue(element);
+    }
+    
+    // 获取UI元素
+    public GameObject GetUIElement(string poolKey, GameObject prefab)
+    {
+        if (uiPools.TryGetValue(poolKey, out var pool) && pool.Count > 0)
+        {
+            var element = pool.Dequeue();
+            element.SetActive(true);
+            return element;
+        }
+        
+        return GameObject.Instantiate(prefab);
+    }
+    
+    // UI更新优化
+    public void OptimizeUIUpdate(List<UIItemSlot> slots)
+    {
+        // 仅更新可见的物品槽
+        var visibleSlots = slots.Where(s => IsSlotVisible(s)).ToList();
+        foreach (var slot in visibleSlots)
+        {
+            slot.UpdateUI();
+        }
+    }
+}
+```
+
+## 17. 网络同步系统
+
+### 17.1 数据同步架构
+```mermaid
+graph TD
+    A[网络同步系统] --> B[状态同步]
+    A --> C[操作同步]
+    A --> D[冲突处理]
+    
+    B --> B1[全量同步]
+    B --> B2[增量同步]
+    B --> B3[定期同步]
+    
+    C --> C1[操作验证]
+    C --> C2[操作重放]
+    C --> C3[回滚处理]
+    
+    D --> D1[版本控制]
+    D --> D2[冲突检测]
+    D --> D3[数据修复]
+```
+
+### 17.2 物品数据同步
+```csharp
+public class ItemSyncManager : MonoBehaviour
+{
+    // 同步数据结构
+    [System.Serializable]
+    public class ItemSyncData
+    {
+        public int itemId;
+        public int amount;
+        public float durability;
+        public int enhanceLevel;
+        public List<EnchantmentData> enchantments;
+        public long version;
+        
+        public byte[] Serialize()
+        {
+            using (MemoryStream ms = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(ms))
             {
-                uiSlots[i].gameObject.SetActive(false);
+                writer.Write(itemId);
+                writer.Write(amount);
+                writer.Write(durability);
+                writer.Write(enhanceLevel);
+                writer.Write(version);
+                // 序列化附魔数据
+                writer.Write(enchantments.Count);
+                foreach (var enchant in enchantments)
+                {
+                    writer.Write(enchant.Serialize());
+                }
+                return ms.ToArray();
+            }
+        }
+    }
+    
+    // 发送物品更新
+    public void SendItemUpdate(Item item)
+    {
+        var syncData = new ItemSyncData
+        {
+            itemId = item.Id,
+            amount = item.Amount,
+            durability = item.CurrentDurability,
+            enhanceLevel = item.EnhanceLevel,
+            enchantments = item.GetEnchantments(),
+            version = GetCurrentVersion()
+        };
+        
+        NetworkManager.Instance.SendToServer("ItemUpdate", syncData.Serialize());
+    }
+}
+```
+
+### 17.3 操作同步系统
+```csharp
+public class ItemOperationSync
+{
+    // 操作记录结构
+    [System.Serializable]
+    public class OperationRecord
+    {
+        public int operationId;          // 操作ID
+        public string operationType;      // 操作类型
+        public Dictionary<string, object> parameters;  // 操作参数
+        public long timestamp;           // 时间戳
+        public int clientId;             // 客户端ID
+    }
+    
+    private Queue<OperationRecord> operationQueue = new();
+    private HashSet<int> executedOperations = new();
+    
+    // 记录操作
+    public void RecordOperation(string type, Dictionary<string, object> params)
+    {
+        var operation = new OperationRecord
+        {
+            operationId = GenerateOperationId(),
+            operationType = type,
+            parameters = params,
+            timestamp = GetCurrentTimestamp(),
+            clientId = NetworkManager.Instance.ClientId
+        };
+        
+        // 本地执行
+        ExecuteOperation(operation);
+        
+        // 加入队列
+        operationQueue.Enqueue(operation);
+        
+        // 发送到服务器
+        SendOperation(operation);
+    }
+    
+    // 执行操作
+    private void ExecuteOperation(OperationRecord operation)
+    {
+        if (executedOperations.Contains(operation.operationId))
+            return;
+            
+        switch (operation.operationType)
+        {
+            case "AddItem":
+                ExecuteAddItem(operation);
+                break;
+            case "RemoveItem":
+                ExecuteRemoveItem(operation);
+                break;
+            case "UpdateItem":
+                ExecuteUpdateItem(operation);
+                break;
+            // ... 其他操作类型
+        }
+        
+        executedOperations.Add(operation.operationId);
+    }
+    
+    // 重放操作
+    public void ReplayOperations(List<OperationRecord> operations)
+    {
+        foreach (var op in operations.OrderBy(o => o.timestamp))
+        {
+            if (!executedOperations.Contains(op.operationId))
+            {
+                ExecuteOperation(op);
             }
         }
     }
 }
 ```
 
-### 15.2 物品搜索系统
+### 17.4 冲突处理系统
 ```csharp
-public class ItemSearchSystem
+public class ConflictResolver
 {
-    public List<Item> SearchItems(string keyword, SearchOptions options)
+    // 冲突类型
+    public enum ConflictType
     {
-        return inventory.slots
-            .Where(slot => !slot.IsEmpty())
-            .Select(slot => slot.item)
-            .Where(item => 
-                (item.itemName.Contains(keyword) || 
-                 item.description.Contains(keyword) ||
-                 item.tag.Contains(keyword)) &&
-                (options.itemType == ItemType.None || item.itemType == options.itemType) &&
-                (options.minLevel <= item.level && item.level <= options.maxLevel)
-            )
-            .ToList();
+        VersionMismatch,    // 版本不匹配
+        DataInconsistency,  // 数据不一致
+        OperationConflict,  // 操作冲突
+        StateConflict       // 状态冲突
+    }
+    
+    // 检测冲突
+    public bool DetectConflict(ItemSyncData localData, ItemSyncData remoteData)
+    {
+        // 版本检查
+        if (localData.version != remoteData.version)
+        {
+            LogConflict(localData.itemId, ConflictType.VersionMismatch, 
+                $"Local: {localData.version}, Remote: {remoteData.version}");
+            return true;
+        }
+            
+        // 数据一致性检查
+        if (!CompareItemData(localData, remoteData))
+        {
+            LogConflict(localData.itemId, ConflictType.DataInconsistency, 
+                "Data mismatch between local and remote");
+            return true;
+        }
+            
+        return false;
+    }
+    
+    // 解决冲突
+    public void ResolveConflict(Item localItem, ItemSyncData remoteData)
+    {
+        // 根据规则决定使用哪个版本
+        if (ShouldUseRemoteData(localItem, remoteData))
+        {
+            // 使用远程数据
+            UpdateLocalItem(localItem, remoteData);
+            LogConflict(localItem.Id, ConflictType.StateConflict, 
+                "Using remote data");
+        }
+        else
+        {
+            // 强制同步本地数据
+            ForceSyncLocalData(localItem);
+            LogConflict(localItem.Id, ConflictType.StateConflict, 
+                "Using local data");
+        }
+    }
+    
+    // 冲突日志记录
+    private void LogConflict(int itemId, ConflictType type, string details)
+    {
+        Debug.LogWarning($"Item Conflict: {itemId} - {type}\nDetails: {details}");
     }
 }
 ```
 
-### 15.3 物品比较系统
+### 17.5 网络状态管理
 ```csharp
-public class ItemComparer
+public class NetworkStateManager : MonoBehaviour
 {
-    public CompareResult CompareItems(Item item1, Item item2)
+    // 网络状态枚举
+    public enum NetworkState
     {
-        if (item1.itemType != item2.itemType)
-            return null;
-            
-        CompareResult result = new CompareResult();
+        Connected,      // 已连接
+        Disconnected,   // 断开连接
+        Reconnecting,   // 重连中
+        Synchronizing   // 同步中
+    }
+    
+    private NetworkState currentState;
+    private Queue<ItemSyncData> pendingSyncs = new();
+    private float lastSyncTime;
+    private const float SYNC_INTERVAL = 1.0f;
+    
+    // 状态变化处理
+    public void HandleStateChange(NetworkState newState)
+    {
+        switch (newState)
+        {
+            case NetworkState.Connected:
+                ProcessPendingSyncs();
+                StartPeriodicSync();
+                break;
+                
+            case NetworkState.Disconnected:
+                EnterOfflineMode();
+                StopPeriodicSync();
+                break;
+                
+            case NetworkState.Reconnecting:
+                PrepareForReconnection();
+                break;
+                
+            case NetworkState.Synchronizing:
+                StartFullSync();
+                break;
+        }
         
-        // 比较基础属性
-        result.AddComparison("攻击力", item1.stats.attack, item2.stats.attack);
-        result.AddComparison("防御力", item1.stats.defense, item2.stats.defense);
-        result.AddComparison("生命值", item1.stats.hp, item2.stats.hp);
+        currentState = newState;
+        OnNetworkStateChanged?.Invoke(currentState);
+    }
+    
+    // 定期同步
+    private void PeriodicSync()
+    {
+        if (Time.time - lastSyncTime >= SYNC_INTERVAL)
+        {
+            SyncInventoryState();
+            lastSyncTime = Time.time;
+        }
+    }
+    
+    // 处理断线重连
+    private void HandleReconnection()
+    {
+        // 验证本地数据版本
+        ValidateLocalData();
         
-        // 比较特殊效果
-        CompareEnchantments(item1, item2, result);
-        CompareSetBonuses(item1, item2, result);
+        // 请求服务器数据
+        RequestServerData();
         
-        return result;
+        // 解决冲突
+        ResolveSyncConflicts();
     }
 }
 ```
+
+### 17.6 网络优化
+```csharp
+public class NetworkOptimizer
+{
+    // 压缩选项
+    private struct CompressionOptions
+    {
+        public bool enableCompression;    // 是否启用压缩
+        public bool enableDeltaSync;      // 是否启用增量同步
+        public int compressionLevel;      // 压缩级别
+        public float syncThreshold;       // 同步阈值
+    }
+    
+    // 数据压缩
+    public byte[] CompressItemData(ItemSyncData data, CompressionOptions options)
+    {
+        if (!options.enableCompression)
+            return data.Serialize();
+            
+        byte[] serialized = data.Serialize();
+        
+        if (options.enableDeltaSync)
+        {
+            serialized = GenerateDeltaSync(serialized);
+        }
+        
+        return CompressData(serialized, options.compressionLevel);
+    }
+    
+    // 批量同步优化
+    public void OptimizeBatchSync(List<ItemSyncData> items)
+    {
+        // 合并相似操作
+        var mergedOperations = MergeSimilarOperations(items);
+        
+        // 按优先级排序
+        var prioritizedItems = PrioritizeItems(mergedOperations);
+        
+        // 分批发送
+        SendBatchSync(prioritizedItems);
+    }
+}
+```
+
+## 18. 安全性系统
+
+### 18.1 数据验证系统
+```csharp
+public class ItemSecurityValidator
+{
+    // 验证物品数据
+    public bool ValidateItemData(Item item)
+    {
+        // 基本属性验证
+        if (!ValidateBasicProperties(item))
+        {
+            LogValidationError("Basic properties validation failed", item);
+            return false;
+        }
+            
+        // 数值范围验证
+        if (!ValidateValueRanges(item))
+        {
+            LogValidationError("Value ranges validation failed", item);
+            return false;
+        }
+            
+        // 一致性验证
+        if (!ValidateConsistency(item))
+        {
+            LogValidationError("Data consistency validation failed", item);
+            return false;
+        }
+            
+        return true;
+    }
+    
+    // 验证基本属性
+    private bool ValidateBasicProperties(Item item)
+    {
+        if (item == null) return false;
+        if (item.Id <= 0) return false;
+        if (string.IsNullOrEmpty(item.ItemName)) return false;
+        if (item.MaxStackSize <= 0) return false;
+        
+        return true;
+    }
+    
+    // 验证数值范围
+    private bool ValidateValueRanges(Item item)
+    {
+        if (item.Amount < 0 || item.Amount > item.MaxStackSize)
+            return false;
+            
+        if (item.CurrentDurability < 0 || item.CurrentDurability > item.MaxDurability)
+            return false;
+            
+        if (item.EnhanceLevel < 0 || item.EnhanceLevel > Item.MAX_ENHANCE_LEVEL)
+            return false;
+            
+        return true;
+    }
+    
+    // 记录验证错误
+    private void LogValidationError(string message, Item item)
+    {
+        Debug.LogError($"Item Validation Error: {message}\nItem ID: {item.Id}, Name: {item.ItemName}");
+    }
+}
+```
+
+### 18.2 反作弊系统
+```csharp
+public class ItemAntiCheat
+{
+    // 操作记录
+    private Dictionary<int, List<OperationRecord>> operationHistory;
+    private Dictionary<string, float> lastOperationTime;
+    private const float MIN_OPERATION_INTERVAL = 0.1f;
+    
+    // 检查操作频率
+    public bool CheckOperationFrequency(string operationType, int itemId)
+    {
+        string key = $"{operationType}_{itemId}";
+        float currentTime = Time.time;
+        
+        if (lastOperationTime.TryGetValue(key, out float lastTime))
+        {
+            if (currentTime - lastTime < MIN_OPERATION_INTERVAL)
+            {
+                LogSuspiciousActivity(operationType, itemId, "Operation too frequent");
+                return false;
+            }
+        }
+        
+        lastOperationTime[key] = currentTime;
+        return true;
+    }
+    
+    // 检查异常行为
+    public bool DetectAbnormalBehavior(Item item)
+    {
+        // 检查数量异常
+        if (CheckAbnormalQuantity(item))
+            return true;
+            
+        // 检查属性异常
+        if (CheckAbnormalStats(item))
+            return true;
+            
+        // 检查操作模式
+        if (CheckAbnormalPattern(item))
+            return true;
+            
+        return false;
+    }
+}
+```
+
+### 18.3 加密系统
+```csharp
+public class ItemEncryption
+{
+    private readonly byte[] key;
+    private readonly byte[] iv;
+    
+    // 加密物品数据
+    public byte[] EncryptItemData(ItemData data)
+    {
+        try
+        {
+            // 序列化数据
+            byte[] serialized = SerializeItemData(data);
+            
+            using (Aes aes = Aes.Create())
+            {
+                aes.Key = key;
+                aes.IV = iv;
+                
+                using (MemoryStream ms = new MemoryStream())
+                using (CryptoStream cs = new CryptoStream(ms, aes.CreateEncryptor(), CryptoStreamMode.Write))
+                {
+                    cs.Write(serialized, 0, serialized.Length);
+                    cs.FlushFinalBlock();
+                    return ms.ToArray();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Encryption failed: {ex.Message}");
+            return null;
+        }
+    }
+    
+    // 解密物品数据
+    public ItemData DecryptItemData(byte[] encrypted)
+    {
+        try
+        {
+            using (Aes aes = Aes.Create())
+            {
+                aes.Key = key;
+                aes.IV = iv;
+                
+                using (MemoryStream ms = new MemoryStream())
+                using (CryptoStream cs = new CryptoStream(ms, aes.CreateDecryptor(), CryptoStreamMode.Write))
+                {
+                    cs.Write(encrypted, 0, encrypted.Length);
+                    cs.FlushFinalBlock();
+                    byte[] decrypted = ms.ToArray();
+                    return DeserializeItemData(decrypted);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Decryption failed: {ex.Message}");
+            return null;
+        }
+    }
+}
+```
+
+### 18.4 权限系统
+```csharp
+public class ItemPermissionSystem
+{
+    // 权限级别
+    public enum PermissionLevel
+    {
+        None = 0,       // 无权限
+        Basic = 1,      // 基础权限
+        Advanced = 2,   // 高级权限
+        Admin = 3       // 管理员权限
+    }
+    
+    // 检查操作权限
+    public bool CheckPermission(string operation, PermissionLevel requiredLevel)
+    {
+        PermissionLevel userLevel = GetUserPermissionLevel();
+        
+        if (userLevel < requiredLevel)
+        {
+            LogPermissionDenied(operation, userLevel, requiredLevel);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // 验证物品操作权限
+    public bool ValidateItemOperation(Item item, string operation)
+    {
+        // 检查基本权限
+        if (!CheckBasicPermission(operation))
+        {
+            LogPermissionCheck(operation, false, "Basic permission check failed");
+            return false;
+        }
+            
+        // 检查物品特定权限
+        if (!CheckItemSpecificPermission(item, operation))
+        {
+            LogPermissionCheck(operation, false, "Item specific permission check failed");
+            return false;
+        }
+            
+        // 检查操作限制
+        if (!CheckOperationRestrictions(item, operation))
+        {
+            LogPermissionCheck(operation, false, "Operation restrictions check failed");
+            return false;
+        }
+        
+        LogPermissionCheck(operation, true, "All permission checks passed");
+        return true;
+    }
+    
+    // 记录权限验证
+    private void LogPermissionCheck(string operation, bool granted, string reason)
+    {
+        string logMessage = $"Permission Check:\n" +
+                          $"Operation: {operation}\n" +
+                          $"Granted: {granted}\n" +
+                          $"Reason: {reason}\n" +
+                          $"Time: {DateTime.Now}";
+                          
+        Debug.Log(logMessage);
+    }
+}
+```
+
+### 18.5 日志系统
+```csharp
+public class ItemSecurityLogger
+{
+    // 日志级别
+    public enum LogLevel
+    {
+        Info,
+        Warning,
+        Error,
+        Critical
+    }
+    
+    // 记录安全事件
+    public void LogSecurityEvent(string eventType, Item item, LogLevel level)
+    {
+        string logMessage = $"Security Event [{level}]:\n" +
+                          $"Type: {eventType}\n" +
+                          $"Item: {item.ItemName} (ID: {item.Id})\n" +
+                          $"Time: {DateTime.Now}\n" +
+                          $"User: {GetCurrentUser()}";
+                          
+        // 写入日志文件
+        WriteToLogFile(logMessage);
+        
+        // 对于严重事件，发送通知
+        if (level >= LogLevel.Error)
+        {
+            NotifyAdministrator(logMessage);
+        }
+    }
+    
+    // 记录可疑行为
+    public void LogSuspiciousActivity(Item item, string activity, string reason)
+    {
+        string logMessage = $"Suspicious Activity Detected:\n" +
+                          $"Activity: {activity}\n" +
+                          $"Item: {item.ItemName} (ID: {item.Id})\n" +
+                          $"Reason: {reason}\n" +
+                          $"User: {GetCurrentUser()}\n" +
+                          $"Time: {DateTime.Now}";
+                          
+        WriteToLogFile(logMessage);
+        NotifySecurityTeam(logMessage);
+    }
+    
+    // 记录审计信息
+    public void LogAuditTrail(string operation, Item item, bool success)
+    {
+        var auditEntry = new AuditEntry
+        {
+            Operation = operation,
+            ItemId = item.Id,
+            UserId = GetCurrentUser(),
+            Timestamp = DateTime.Now,
+            Success = success,
+            Details = GenerateAuditDetails(item)
+        };
+        
+        SaveAuditEntry(auditEntry);
+    }
+}
+```
+
+## 总结
+
+本文档详细描述了一个完整的RPG物品系统的设计和实现，包括：
+
+1. 物品分类系统
+   - 多层级分类结构
+   - 类型判断和转换
+   - 扩展性设计
+
+2. 物品属性系统
+   - 基础属性
+   - 装备属性
+   - 武器特性
+   - 元素系统
+
+3. 强化系统
+   - 等级提升
+   - 附魔系统
+   - 宝石镶嵌
+   - 改造系统
+
+4. 耐久系统
+   - 耐久度管理
+   - 损耗计算
+   - 修理系统
+
+5. UI系统
+   - 物品栏界面
+   - 拖放操作
+   - 上下文菜单
+
+6. 数据管理
+   - 数据库系统
+   - 序列化
+   - 存档加载
+
+7. 编辑器工具
+   - 物品编辑器
+   - 数据验证
+   - 批量处理
+
+8. 实战示例
+   - 创建物品
+   - 使用物品
+
+9. C#知识要点
+   - 枚举类型
+   - 泛型类型
+
+10. 常见问题(FAQ)
+    - 处理物品销毁
+    - 处理物品过热
+
+11. 性能测试报告
+    - 物品创建性能
+    - 物品访问性能
+
+12. 系统集成示例
+    - 物品系统与角色系统集成
+    - 物品系统与商店系统集成
+
+13. 调试与错误处理
+    - 调试方法
+    - 错误处理
+
+14. 扩展功能示例
+    - 物品属性扩展
+    - 物品事件扩展
+
+15. 性能优化指南
+    - 对象池优化
+    - 内存管理
+    - UI性能优化
+
+16. 网络同步系统
+    - 数据同步架构
+    - 物品数据同步
+    - 操作同步系统
+
+17. 安全性系统
+    - 数据验证系统
+
+### 注意事项
+
+1. 性能优化
+   - 使用对象池管理物品实例
+   - 缓存频繁访问的数据
+   - 优化UI更新逻辑
+
+2. 数据安全
+   - 验证所有输入数据
+   - 防止重复ID
+   - 保护存档数据
+
+3. 扩展性
+   - 预留足够的类型空间
+   - 使用接口和抽象类
+   - 模块化设计
+
+4. 易用性
+   - 直观的编辑器界面
+   - 完善的错误提示
+   - 批量处理工具
+
+5. 维护性
+   - 清晰的代码结构
+   - 完整的注释文档
+   - 统一的命名规范 
